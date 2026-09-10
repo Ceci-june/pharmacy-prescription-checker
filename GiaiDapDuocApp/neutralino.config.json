@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
+  "applicationId": "vn.giaidapduoc.otc",
+  "version": "1.0.0",
+  "defaultMode": "window",
+  "port": 8231,
+  "documentRoot": "/resources/",
+  "url": "/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "tokenSecurity": "one-time",
+  "logging": {
+    "enabled": false,
+    "writeToLogFile": false
+  },
+  "nativeAllowList": [
+    "app.exit",
+    "window.*",
+    "os.showSaveDialog",
+    "os.showOpenDialog",
+    "os.showMessageBox",
+    "filesystem.writeBinaryFile",
+    "filesystem.readBinaryFile"
+  ],
+  "modes": {
+    "window": {
+      "title": "OTC Tool — Giải đáp Dược",
+      "width": 1440,
+      "height": 900,
+      "minWidth": 380,
+      "minHeight": 560,
+      "center": true,
+      "fullScreen": false,
+      "alwaysOnTop": false,
+      "icon": "/resources/icons/appIcon.png",
+      "enableInspector": false,
+      "borderless": false,
+      "maximize": false,
+      "hidden": false,
+      "resizable": true,
+      "exitProcessOnClose": true
+    }
+  },
+  "cli": {
+    "binaryName": "GiaiDapDuoc",
+    "resourcesPath": "/resources/",
+    "extensionsPath": "/extensions/",
+    "clientLibrary": "/resources/js/neutralino.js",
+    "binaryVersion": "6.9.0",
+    "clientVersion": "6.9.0"
+  }
+}

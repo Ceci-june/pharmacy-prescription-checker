@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OTC Data Viewer — bản offline</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f7f8f9; --panel:#fff; --line:#e3e6ea; --ink:#16211f; --ink2:#5a6a68; --ink3:#8b9997;
+  --accent:#0f5c4d; --accent-soft:#e7f1ee;
+  --a:#7c5cbf; --b:#0f5c4d; --c:#b06e12;
+  --crit:#c0392b; --crit-bg:#fdecea; --high:#b8730a; --high-bg:#fdf3e2; --med:#2f6fb0; --med-bg:#eaf2fb;
+  --info:#4a5a58; --info-bg:#eef1f0;
+  --radius:10px; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font:inherit}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#c8cfcd;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#aab4b2}
+
+/* ── shell ─────────────────────────────────────────── */
+#shell{display:grid;grid-template-columns:270px 1fr;grid-template-rows:52px 1fr;height:100vh}
+header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--accent);color:#eef5f3}
+header .brand{font-weight:700;font-size:14.5px;letter-spacing:.01em;display:flex;align-items:center;gap:8px}
+header .logo{flex:0 0 auto;width:24px;height:24px;display:block}
+header .ver{font-size:11.5px;opacity:.68;font-family:var(--mono)}
+header .sp{margin-left:auto}
+header button{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:600}
+header button:hover{background:rgba(255,255,255,.24)}
+
+header .tabs{display:flex;gap:2px;margin-left:6px}
+header .tab{border-radius:7px;padding:5px 13px;font-size:13px;font-weight:600;background:transparent;border:none;opacity:.72}
+header .tab:hover{background:rgba(255,255,255,.12);opacity:1}
+header .tab.on{background:rgba(255,255,255,.2);opacity:1}
+/* Tab Danh mục / Thông tư không dùng sidebar bệnh → còn một cột duy nhất.
+   Phải bỏ hẳn cột (không đặt 0 1fr) vì #side display:none làm #main tự nhảy vào cột 1. */
+#shell.wide{grid-template-columns:1fr}
+#shell.wide #side{display:none}
+
+#side{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding-bottom:24px}
+#q{width:calc(100% - 20px);margin:10px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+#q:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.bhead{padding:12px 14px 5px;font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.ditem{display:flex;gap:9px;align-items:baseline;width:100%;text-align:left;padding:7px 14px;border-left:3px solid transparent}
+.ditem:hover{background:var(--bg)}
+.ditem.on{background:var(--accent-soft);border-left-color:var(--accent)}
+.ditem .nm{font-size:13.5px;font-weight:600}
+.ditem.on .nm{color:var(--accent)}
+.ditem .sb{font-size:11px;color:var(--ink3)}
+
+#main{overflow-y:auto;padding:18px 22px 60px}
+.empty{color:var(--ink3);text-align:center;margin-top:22vh;font-size:14px}
+
+/* ── disease header ────────────────────────────────── */
+.dtitle{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.dtitle .ic{font-size:26px}
+.dtitle h1{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.dtitle .sub{font-size:12px;color:var(--ink3);font-family:var(--mono)}
+.dtitle .quiz{margin-left:auto;background:var(--accent);color:#fff;border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:600}
+.dtitle .quiz:hover{opacity:.9}
+.dtitle .quiz[disabled]{background:#cdd4d2;color:#8b9997;cursor:not-allowed}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px}
+.card>.hd{padding:9px 14px;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);display:flex;align-items:center;gap:8px}
+.card>.bd{padding:12px 14px}
+.tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--accent-soft);color:var(--accent);letter-spacing:.03em;text-transform:none}
+
+/* ── chips ─────────────────────────────────────────── */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:4px 11px;font-size:12.5px;color:var(--ink2);display:flex;align-items:center;gap:5px}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip.on:hover{color:#fff}
+
+/* ── red flags ─────────────────────────────────────── */
+.flags{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:8px}
+.flag{border-radius:8px;padding:9px 11px;border-left:3px solid}
+.flag .f{font-size:12.8px;font-weight:600;line-height:1.4}
+.flag .a{font-size:11.5px;margin-top:3px;opacity:.85}
+.flag.crit{background:var(--crit-bg);border-color:var(--crit);color:var(--crit)}
+.flag.high{background:var(--high-bg);border-color:var(--high);color:var(--high)}
+.flag.med{background:var(--med-bg);border-color:var(--med);color:var(--med)}
+.flag.info{background:var(--info-bg);border-color:var(--info);color:var(--info)}
+
+/* ── ABC columns ───────────────────────────────────── */
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start}
+@media(max-width:1180px){.cols{grid-template-columns:1fr}}
+.col .hd .letter{width:17px;height:17px;border-radius:4px;color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.col.A .letter{background:var(--a)} .col.B .letter{background:var(--b)} .col.C .letter{background:var(--c)}
+
+.grp{margin-bottom:13px}
+.grp:last-child{margin-bottom:0}
+.grp .gt{font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:6px;display:flex;gap:6px;align-items:baseline}
+.grp .gt .n{width:16px;height:16px;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+
+.drug{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:#fcfdfd}
+.drug:last-child{margin-bottom:0}
+.drug .nm{font-size:13.4px;font-weight:650;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.drug .dose{font-family:var(--mono);font-size:11.8px;color:var(--accent);margin-top:3px;line-height:1.45}
+.drug .nt{font-size:11.8px;color:var(--ink2);margin-top:4px;line-height:1.45}
+.drug .warn{font-size:11.8px;margin-top:5px;padding:5px 8px;border-radius:6px;background:var(--high-bg);color:var(--high);font-weight:600}
+.drug .gdose{font-size:11.8px;margin-top:5px;padding:5px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-family:var(--mono);font-weight:600}
+.drug.blocked{opacity:.62;background:var(--crit-bg);border-color:#f2c9c3}
+.drug.blocked .nm{text-decoration:line-through;text-decoration-thickness:1px}
+.pill{font-size:9.5px;font-weight:800;padding:1.5px 5px;border-radius:4px;letter-spacing:.04em}
+.pill.otc{background:#e3f3ea;color:#15784f}
+.pill.etc{background:#fbe6e3;color:#b6382a}
+.pill.no{background:#fbe6e3;color:#b6382a}
+/* Tên riêng, tránh đụng .flag.info của red flag mức "info". */
+.pkbtn{width:16px;height:16px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.pkbtn:hover{background:var(--accent);color:#fff}
+
+.kv{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.8px;line-height:1.5}
+.kv:last-child{border-bottom:none}
+.kv .k{flex:0 0 118px;font-weight:650;color:var(--ink2)}
+/* 29 đoạn special dùng \n + bullet "•" — giữ nguyên xuống dòng, nếu không sẽ dồn thành một khối. */
+.kv .v,.gwarn .v{white-space:pre-line}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:7px}
+.dcard{border:1px solid var(--line);border-radius:8px;padding:8px 10px;text-align:left;width:100%}
+.dcard:hover{border-color:var(--accent);background:var(--accent-soft)}
+.dcard .dn{font-size:13px;font-weight:650}
+.dcard .dc{font-size:11px;color:var(--ink3);margin-top:2px}
+.dcard .miss{font-size:10px;color:var(--high)}
+.note{font-size:12.5px;color:var(--ink2);background:var(--bg);border-radius:8px;padding:9px 11px;line-height:1.5}
+.gwarn{font-size:12.8px;line-height:1.5;background:var(--high-bg);color:#7a4c06;border-radius:8px;padding:10px 12px;border-left:3px solid var(--high);margin-bottom:14px}
+.gwarn b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;opacity:.75}
+
+/* ── regimens ──────────────────────────────────────── */
+.reg{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.reg .rn{font-size:13px;font-weight:650;margin-bottom:5px}
+.reg ul{margin:0 0 0 16px}
+.reg li{font-family:var(--mono);font-size:11.8px;color:var(--accent);line-height:1.6}
+.reg .rnote{font-size:11.8px;color:var(--ink2);margin-top:5px}
+.reg .int{font-size:11.5px;margin-top:6px;padding:6px 9px;border-radius:6px;background:var(--crit-bg);color:var(--crit);line-height:1.45}
+
+/* ── Hộp thoại cảnh báo tương tác ───────────────────── */
+.alertmodal{background:var(--panel);border-radius:14px;width:min(680px,100%);max-height:88vh;overflow-y:auto;position:relative;border-top:6px solid var(--crit)}
+.alerthd{padding:18px 26px 12px;display:flex;align-items:center;gap:12px}
+.alerthd .big{font-size:30px;line-height:1}
+.alerthd h2{font-size:19px;color:var(--crit)}
+.alerthd .sub2{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.alertbody{padding:0 26px 6px}
+.alertpair{border:1px solid var(--line);border-left:4px solid var(--crit);border-radius:9px;padding:11px 13px;margin-bottom:9px}
+.alertpair.lvl-tb{border-left-color:var(--high)} .alertpair.lvl-nh{border-left-color:var(--med)}
+.alertpair .who{font-size:13.8px;font-weight:700;margin:5px 0 3px}
+.alertpair .ing{font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
+.alertpair .ln{font-size:12.8px;line-height:1.55;margin-top:5px;white-space:pre-line}
+.alertfoot{padding:6px 26px 20px;display:flex;gap:9px;align-items:center}
+
+/* ── Tương tác ──────────────────────────────────────── */
+.ixwrap{display:grid;grid-template-columns:330px 1fr;gap:14px;align-items:start}
+@media(max-width:1100px){.ixwrap{grid-template-columns:1fr}}
+.ixpick{width:100%;text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);display:flex;gap:9px;align-items:center}
+.ixpick:last-child{border-bottom:none}
+.ixpick:hover{background:var(--bg)}
+.ixpick.on{background:var(--accent-soft)}
+.ixpick .nm{font-size:13px;font-weight:650;flex:1;min-width:0}
+.ixpick .ig{font-size:11px;color:var(--ink3);margin-top:1px}
+.ixpick .cnt{flex:0 0 auto;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:20px;background:var(--accent-soft);color:var(--accent)}
+.ixpick .cnt.zero{background:var(--line);color:var(--ink3)}
+.ixlist{border:1px solid var(--line);border-radius:9px;max-height:64vh;overflow-y:auto}
+.ixcard{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+.ixcard .top{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.ixcard .other{font-size:13.6px;font-weight:650;flex:1;min-width:120px}
+.ixcard .kvv{font-size:12.5px;line-height:1.5;margin-top:6px;white-space:pre-line}
+.ixcard .kvv b{color:var(--ink2)}
+.sevtag{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;letter-spacing:.02em}
+.sev-cc{background:var(--crit-bg);color:var(--crit)}
+.sev-ng{background:#fbe6e3;color:#b6382a}
+.sev-tb{background:var(--high-bg);color:var(--high)}
+.sev-nh{background:var(--med-bg);color:var(--med)}
+
+/* ── ICD 10 ─────────────────────────────────────────── */
+.icdrow{display:flex;gap:12px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.icdrow:last-child{border-bottom:none}
+.icdrow:hover{background:var(--bg)}
+.icdrow.on{background:var(--accent-soft)}
+.icdrow .code{flex:0 0 82px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--accent)}
+.icdrow .dx{font-size:12.8px;line-height:1.5;flex:1;min-width:0}
+.icdrow .iact{flex:0 0 auto;display:flex;gap:5px}
+.icdsub{padding:2px 10px 12px 104px;border-bottom:1px solid var(--line);font-size:12.5px}
+.icdsub .d{padding:4px 0;border-bottom:1px dashed var(--line)}
+.icdsub .d:last-child{border-bottom:none}
+
+/* ── CRUD: thanh công cụ, danh sách, form ──────────── */
+.tbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tbar input[type=search],.tbar input[type=text]{flex:1;min-width:200px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.btn{background:var(--accent);color:#fff;border-radius:8px;padding:8px 15px;font-size:13px;font-weight:600;white-space:nowrap}
+.btn:hover{opacity:.9}
+.btn.ghost{background:var(--panel);color:var(--ink2);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn.danger{background:var(--crit-bg);color:var(--crit);border:1px solid #f2c9c3}
+.btn.sm{padding:4px 10px;font-size:12px}
+
+.item{border:1px solid var(--line);border-radius:9px;margin-bottom:7px;background:var(--panel);overflow:hidden}
+.item.open{border-color:var(--accent)}
+.ihead{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer}
+.ihead:hover{background:var(--bg)}
+.ihead .car{color:var(--ink3);font-size:10px;flex:0 0 10px}
+.ihead .ck,.selbar .ck{width:15px;height:15px;flex:0 0 auto;accent-color:var(--accent);cursor:pointer;margin:0}
+.item.sel{border-color:var(--accent);background:var(--accent-soft)}
+.selbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:12.8px;color:var(--ink2)}
+.selbar label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.selbar .cnt{font-weight:650;color:var(--accent)}
+.ihead .inm{font-size:13.8px;font-weight:650}
+.ihead .iing{font-size:11.8px;color:var(--ink3);margin-top:1px}
+.ihead .grow{flex:1;min-width:0}
+.ihead .iact{display:flex;gap:5px;flex:0 0 auto}
+.ibody{padding:2px 12px 12px 34px;border-top:1px solid var(--line)}
+.empty2{color:var(--ink3);font-size:13.5px;text-align:center;padding:34px 20px;line-height:1.6}
+
+.frow{margin-bottom:12px}
+.frow label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-bottom:4px}
+.fi{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font:inherit;font-size:13.5px;color:var(--ink)}
+.fi:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+textarea.fi{resize:vertical;line-height:1.55}
+.ferr{font-size:12.5px;color:var(--crit);background:var(--crit-bg);border-radius:7px;padding:8px 11px;margin-bottom:10px}
+.warnbar{font-size:12.5px;background:var(--high-bg);color:#7a4c06;border-radius:8px;padding:9px 12px;margin-bottom:14px;border-left:3px solid var(--high)}
+
+/* ── Kiểm tra đơn thuốc ───────────────────────────── */
+.rxwrap{display:grid;grid-template-columns:minmax(320px,42%) 1fr;gap:14px;align-items:start}
+@media(max-width:1100px){.rxwrap{grid-template-columns:1fr}}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:30px 18px;text-align:center;background:var(--panel);cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop .big{font-size:30px}
+.drop .t{font-size:13.5px;font-weight:650;margin-top:8px}
+.drop .s{font-size:12px;color:var(--ink3);margin-top:4px;line-height:1.6}
+.rximg{width:100%;border:1px solid var(--line);border-radius:8px;display:block;cursor:zoom-in;background:#fff}
+.rximg.z{cursor:zoom-out;max-width:none;width:auto}
+.rxscroll{overflow:auto;max-height:76vh;border-radius:8px}
+.hit{display:block;width:100%;text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px}
+.hit:last-child{border-bottom:none}
+.hit:hover{background:var(--accent-soft)}
+.hit .hn{font-weight:650}
+.hit .hi{font-size:11.5px;color:var(--ink3)}
+.hits{border:1px solid var(--line);border-radius:8px;max-height:260px;overflow-y:auto;margin-top:7px}
+.rxrow{border:1px solid var(--line);border-radius:9px;margin-bottom:7px;background:var(--panel)}
+.rxrow.miss{border-color:var(--high);background:var(--high-bg)}
+.ambrow{border:1px solid var(--line);border-radius:9px;margin-bottom:7px;background:var(--panel)}
+.rxhead{display:flex;align-items:center;gap:9px;padding:9px 11px;cursor:pointer}
+.rxhead .n{width:19px;height:19px;border-radius:5px;background:var(--accent);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.rxrow.miss .rxhead .n{background:var(--high)}
+.warnbox{border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12.8px;line-height:1.55;border-left:3px solid}
+.warnbox.dup{background:var(--crit-bg);color:var(--crit);border-color:var(--crit)}
+.warnbox.miss{background:var(--high-bg);color:#7a4c06;border-color:var(--high)}
+.warnbox.ok{background:#e8f6ef;color:#15784f;border-color:#2e9e6b}
+.warnbox b{display:block;margin-bottom:2px}
+
+/* ── slide-over + modal ────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(12,24,22,.44);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+.sheet{position:fixed;top:0;right:0;bottom:0;width:min(430px,92vw);background:var(--panel);z-index:60;box-shadow:-8px 0 34px rgba(0,0,0,.16);overflow-y:auto;padding:20px 22px}
+.sheet h2{font-size:17px;margin-bottom:2px}
+.sheet .cls{font-size:12px;color:var(--ink3);font-family:var(--mono);margin-bottom:14px}
+.sheet dt{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-top:13px}
+.sheet dd{font-size:13px;line-height:1.55;margin-top:3px}
+.x{position:absolute;top:14px;right:16px;font-size:19px;color:var(--ink3);line-height:1}
+.x:hover{color:var(--ink)}
+
+.modal{background:var(--panel);border-radius:14px;width:min(660px,100%);max-height:88vh;overflow-y:auto;padding:24px 26px;position:relative}
+.qprog{font-size:11.5px;color:var(--ink3);font-family:var(--mono);margin-bottom:10px}
+.qbar{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:16px}
+.qbar i{display:block;height:100%;background:var(--accent);transition:width .25s}
+.qq{font-size:15.5px;font-weight:600;line-height:1.5;margin-bottom:14px}
+.opt{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:9px;padding:10px 13px;margin-bottom:7px;font-size:13.8px;line-height:1.45}
+.opt:hover:not(:disabled){border-color:var(--accent);background:var(--accent-soft)}
+.opt:disabled{cursor:default}
+.opt.right{border-color:#2e9e6b;background:#e8f6ef;font-weight:600}
+.opt.wrong{border-color:var(--crit);background:var(--crit-bg)}
+.exp{font-size:13px;line-height:1.55;background:var(--bg);border-left:3px solid var(--accent);border-radius:7px;padding:11px 13px;margin-top:10px}
+.exp b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:3px}
+.qnav{display:flex;gap:8px;margin-top:16px;align-items:center}
+.qnav .go{background:var(--accent);color:#fff;border-radius:8px;padding:8px 18px;font-size:13.5px;font-weight:600;margin-left:auto}
+.qnav .go:hover{opacity:.9}
+.score{text-align:center;padding:14px 0}
+.score .big{font-size:38px;font-weight:800;color:var(--accent)}
+.score .lbl{font-size:13px;color:var(--ink2);margin-top:4px}
+</style>
+</head>
+<body>
+<div id="shell">
+  <header>
+    <span class="brand"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="logo" aria-hidden="true"> <defs> <clipPath id="mkCap"> <rect x="95" y="185" width="290" height="140" rx="70" transform="rotate(-45 240 255)"/> </clipPath> </defs> <g transform="rotate(-45 240 255)"> <rect x="95" y="185" width="290" height="140" rx="70" fill="#F5EFE0"/> <g clip-path="url(#mkCap)" transform="rotate(45 240 255)"> <g transform="rotate(-45 240 255)"> <rect x="240" y="185" width="145" height="140" fill="none"/> </g> </g> <rect x="95" y="185" width="290" height="140" rx="70" fill="none" stroke="#F5EFE0" stroke-width="22"/> <line x1="240" y1="185" x2="240" y2="325" stroke="#F5EFE0" stroke-width="22"/> </g> <circle cx="372" cy="372" r="86" fill="#F5EFE0" stroke="#0f5c4d" stroke-width="26"/> <path d="M330 374 L360 404 L416 342" fill="none" stroke="#0f5c4d" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/> </svg><span>OTC Tool</span></span>
+    <span class="tabs" id="tabs">
+      <button class="tab on" data-tab="otc">OTC Data</button>
+      <button class="tab" data-tab="catalog">Danh mục</button>
+      <button class="tab" data-tab="rx">Kiểm tra đơn</button>
+      <button class="tab" data-tab="icd">ICD 10</button>
+      <button class="tab" data-tab="inter">Tương tác</button>
+      <button class="tab" data-tab="circular">Thông tư</button>
+    </span>
+    <span class="sp"></span>
+    <span class="ver" id="ver"></span>
+    <button id="btnIndex">Tra cứu dược lý</button>
+    <button id="btnAbout">Về bản dữ liệu</button>
+  </header>
+  <nav id="side"><input id="q" placeholder="Tìm bệnh, triệu chứng…" autocomplete="off"><div id="dlist"></div></nav>
+  <main id="main"><div class="empty">← Chọn một bệnh để bắt đầu</div></main>
+</div>
+<!-- SheetJS 0.18.5 (Apache-2.0) — nhúng sẵn để đọc/ghi .xlsx khi không có mạng -->
+<script>/*__XLSX__*/</script>
+<!-- Tesseract.js 7 + core LSTM + eng.traineddata (Apache-2.0) — OCR tên thuốc, chạy offline -->
+<script>/*__OCR__*/</script>
+<script>
+const DB = /*__DATA__*/null;
+// Chưa build thì DB còn là null — báo rõ thay vì để trang trắng.
+if (!DB) {
+  document.body.innerHTML = '<div style="max-width:560px;margin:16vh auto;padding:0 24px;'
+    + 'font:15px/1.7 system-ui,sans-serif;color:#16211f">'
+    + '<div style="font-size:34px;margin-bottom:10px">📄</div>'
+    + '<h1 style="font-size:19px;margin-bottom:10px">Đây là khuôn mẫu, chưa có dữ liệu</h1>'
+    + '<p style="color:#5a6a68">Bạn đang mở <code>viewer-template.html</code>. File dùng được là '
+    + '<b>otc-viewer.html</b> ở thư mục gốc <code>Giaidapduoc/</code>.</p>'
+    + '<p style="color:#5a6a68;margin-top:12px">Nếu chưa có file đó, dựng lại bằng:</p>'
+    + '<pre style="background:#eef1f0;border-radius:8px;padding:12px;font-size:12.5px;overflow-x:auto;'
+    + 'margin-top:8px">node crawled-data/scripts/build-viewer.js crawled-data \\\n'
+    + '  crawled-data/scripts/viewer-template.html otc-viewer.html</pre></div>';
+  throw new Error('viewer-template.html chưa được build');
+}
+const {diseases:DIS, pharm:PHARM, drugSafety:SAFE, inters:INTERS, symFilter:SF, meta:META, quiz:QUIZ, icd10:ICD} = DB;
+
+// 11 nhóm bệnh nhân, nhãn lấy từ getGroups() của app gốc.
+const GROUPS = [
+  {id:'adult',k:null,label:'Người lớn',icon:'👤'},
+  {id:'u2y',k:'u2y',label:'Trẻ <2t',icon:'👶'},
+  {id:'cu6',k:'cu6',label:'Trẻ <6t',icon:'🧒'},
+  {id:'c612',k:'c612',label:'Trẻ 6–12t',icon:'🎒'},
+  {id:'preg',k:'preg',label:'Thai phụ',icon:'🤰'},
+  {id:'bf',k:'bfeed',label:'Cho bú',icon:'🤱'},
+  {id:'eld',k:'eld',label:'Người cao tuổi',icon:'👴'},
+  {id:'htn',k:'htn',label:'Tăng huyết áp',icon:'❤️'},
+  {id:'dm',k:'dm',label:'Đái tháo đường',icon:'💉'},
+  {id:'suygan',k:'suygan',label:'Suy gan',icon:'🟡'},
+  {id:'suythan',k:'suythan',label:'Suy thận',icon:'💧'},
+];
+// Nhãn theo data key — gồm cả 2 key không có nút riêng (u3m, maoi).
+const KLABEL = {u3m:'Trẻ <3 tháng', u2y:'Trẻ <2t', cu6:'Trẻ <6t', c612:'Trẻ 6–12t', preg:'Thai phụ',
+  bfeed:'Cho bú', eld:'Người cao tuổi', htn:'Tăng huyết áp', dm:'Đái tháo đường',
+  suygan:'Suy gan', suythan:'Suy thận', maoi:'Đang dùng iMAO'};
+const BATCH = {respiratory:'Hô hấp',digestive:'Tiêu hoá',skin:'Da liễu',eye:'Mắt',allergy:'Dị ứng & Da liễu',
+  neuro:'Thần kinh',musculo:'Cơ xương khớp',gynecology:'Phụ khoa',dental:'Răng miệng',other:'Khác'};
+const BORDER = Object.keys(BATCH);
+// grp_show trong dữ liệu còn dùng token cũ; quy về data key.
+const ALIAS = {liver:'suygan',kidney:'suythan',cvd:'htn',bf:'bfeed'};
+// Bank quiz "dyspepsia" thực chất thuộc bệnh indigestion (app gốc tra theo id nên bỏ sót).
+const QUIZ_ALIAS = {indigestion:'dyspepsia'};
+
+let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, rxAck:'', exp:{}, sel:{},
+  rxImg:null, rxItems:[], rxq:'', rxZoom:false};
+
+// ── Dữ liệu người dùng tự nhập (Danh mục + Thông tư) ──────────────────
+// Lưu ở localStorage. Trên file:// mọi trang dùng chung origin nên key phải riêng biệt;
+// và vì xoá dữ liệu duyệt web là mất, luôn có nút Xuất Excel để sao lưu thật.
+const LSKEY = 'gdd.userdata.v1';
+let UD = {drugs:[], circulars:[], inters:[], icd:[]}, lsOK = true;
+function udLoad() {
+  try {
+    const raw = localStorage.getItem(LSKEY);
+    if (raw) {
+      const o = JSON.parse(raw) || {};
+      UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
+      // Lần đầu chưa có gì thì nạp sẵn 336 mã nhúng sẵn; sau đó danh sách này do người dùng
+      // toàn quyền sửa. Mảng rỗng vẫn là "đã có" nên xoá hết rồi mở lại không bị nạp lại.
+      UD.icd = o.icd ? o.icd : ICD.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' }));
+    } else {
+      UD.icd = ICD.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' }));
+    }
+  } catch (e) { lsOK = false; return; }
+  // Bản cũ tách "Liều dùng" và "Độ tuổi áp dụng" thành 2 trường — nối lại thành 1.
+  let moved = 0;
+  for (const d of UD.drugs) {
+    if (!d || !('age' in d)) continue;
+    const age = String(d.age || '').trim();
+    if (age && !String(d.dose || '').includes(age)) d.dose = [d.dose, age].filter(Boolean).join(' — ');
+    delete d.age; moved++;
+  }
+  if (moved) udSave();
+}
+function udSave() {
+  try { localStorage.setItem(LSKEY, JSON.stringify(UD)); lsOK = true; }
+  catch (e) { lsOK = false; }
+}
+const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+const DRUG_FIELDS = [
+  {k:'name', label:'Tên thuốc', req:true},
+  {k:'ing',  label:'Hoạt chất', req:true},
+  // Gợi ý mã ICD-10 cho thuốc, suy ra từ Chỉ định. Là KHUYẾN NGHỊ, dược sĩ phải tự xác nhận.
+  {k:'icd',  label:'ICD khuyến nghị', alias:['ICD', 'Mã ICD', 'ICD 10', 'ICD-10']},
+  {k:'cls',  label:'Nhóm dược lý', alias:['Nhóm', 'Phân nhóm', 'Nhóm thuốc']},
+  {k:'ind',  label:'Chỉ định', area:true},
+  {k:'ci',   label:'Chống chỉ định', area:true},
+  // Liều và tuổi gộp chung 1 hàng. `alias` để vẫn nhập được file Excel xuất theo
+  // bản cũ (2 cột riêng) — giá trị 2 cột sẽ được nối lại.
+  {k:'dose', label:'Liều dùng & độ tuổi', area:true,
+   alias:['Liều dùng', 'Độ tuổi áp dụng', 'Độ tuổi', 'Tuổi']},
+  {k:'caut', label:'Thận trọng & tương tác', area:true},
+];
+const CIRC_FIELDS = [
+  {k:'name', label:'Tên thông tư', req:true},
+  {k:'body', label:'Nội dung', area:true, big:true},
+];
+// Tương tác ghi theo CẶP HOẠT CHẤT, không theo tên biệt dược: một hoạt chất có mặt trong
+// nhiều sản phẩm, ghi theo hoạt chất thì mọi biệt dược chứa nó đều được cảnh báo, khỏi phải
+// nhập lại từng cặp biệt dược (191 sản phẩm sẽ thành hàng nghìn cặp).
+const SEV = ['Chống chỉ định', 'Nghiêm trọng', 'Trung bình', 'Nhẹ'];
+const INTER_FIELDS = [
+  {k:'a',      label:'Hoạt chất A', req:true},
+  {k:'b',      label:'Hoạt chất B', req:true},
+  {k:'sev',    label:'Mức độ', choices:SEV, alias:['Mức', 'Mức độ nặng', 'Severity']},
+  {k:'effect', label:'Hậu quả', area:true, alias:['Hậu quả lâm sàng', 'Mô tả', 'Diễn giải']},
+  {k:'action', label:'Xử trí', area:true, alias:['Khuyến cáo', 'Cách xử trí']},
+  {k:'note',   label:'Ghi chú', area:true, alias:['Nguồn']},
+];
+const ICD_FIELDS = [
+  {k:'code', label:'Mã ICD', req:true},
+  {k:'dx',   label:'Chẩn đoán', req:true, area:true, alias:['Tên chẩn đoán', 'Chẩn đoán ICD']},
+  {k:'note', label:'Ghi chú', area:true},
+];
+const KIND = {
+  drug:     {fields:DRUG_FIELDS, list:() => UD.drugs,     label:'thuốc',    what:'Thuốc'},
+  icd:      {fields:ICD_FIELDS,  list:() => UD.icd,       label:'mã ICD',   what:'ICD 10',
+             title:x => (x.code || '?') + ' — ' + (x.dx || ''),
+             valid:o => o.code && o.dx},
+  circular: {fields:CIRC_FIELDS, list:() => UD.circulars, label:'thông tư', what:'Thông tư'},
+  inter:    {fields:INTER_FIELDS, list:() => UD.inters,   label:'cặp tương tác', what:'Tương tác',
+             title:x => (x.a || '?') + '  ✕  ' + (x.b || '?'),
+             valid:o => o.a && o.b},
+};
+const titleOf = (kind, x) => (KIND[kind].title ? KIND[kind].title(x) : (x.name || '(chưa có tên)'));
+
+const el = (t,a,...c) => {
+  const n = document.createElement(t);
+  for (const k in (a||{})) {
+    if (k === 'cls') n.className = a[k];
+    else if (k === 'html') n.innerHTML = a[k];
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), a[k]);
+    else if (a[k] != null && a[k] !== false) n.setAttribute(k, a[k]);
+  }
+  c.flat(Infinity).forEach(x => x != null && x !== false && n.appendChild(typeof x === 'object' ? x : document.createTextNode(x)));
+  return n;
+};
+const groupKey = () => (GROUPS.find(g => g.id === S.group) || {}).k;
+const dis = () => DIS.find(d => d.id === S.id);
+const quizFor = id => QUIZ[id] || QUIZ[QUIZ_ALIAS[id]] || null;
+
+// ── sidebar ─────────────────────────────────────────
+function matches(d, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  return (d.name + ' ' + d.sub + ' ' + d.symptoms.join(' ')).toLowerCase().includes(q);
+}
+function renderSide() {
+  const box = document.getElementById('dlist');
+  box.textContent = '';
+  let shown = 0;
+  for (const bk of BORDER) {
+    const items = DIS.filter(d => (d.batch === bk || d.batch2 === bk) && matches(d, S.q));
+    if (!items.length) continue;
+    shown += items.length;
+    box.appendChild(el('div', {cls:'bhead'}, BATCH[bk]));
+    for (const d of items) {
+      box.appendChild(el('button', {cls:'ditem' + (d.id === S.id ? ' on' : ''), onclick:() => pick(d.id)},
+        el('span', {}, d.icon),
+        el('span', {}, el('div', {cls:'nm'}, d.name), el('div', {cls:'sb'}, d.sub))));
+    }
+  }
+  if (!shown) box.appendChild(el('div', {cls:'bhead'}, 'Không tìm thấy'));
+}
+function pick(id) { S.id = id; S.syms = []; S.group = 'adult'; S.page = 'disease'; renderSide(); renderMain(); document.getElementById('main').scrollTop = 0; }
+
+// ── filtering (theo đúng logic getFilteredB của app gốc) ──
+function filteredB(d) {
+  let B = d.B;
+  const gk = groupKey();
+  if (gk) B = B.filter(g => !g.grp_show || g.grp_show.some(x => (ALIAS[x] || x) === gk));
+  if (!S.syms.length) return B;
+  const f = SF[d.id];
+  if (!f) return B;
+  return B.filter(g => {
+    const idxs = f[d.B.indexOf(g)];
+    if (!idxs || !idxs.length) return true;
+    return idxs.some(x => S.syms.includes(x));
+  });
+}
+function safety(name) {
+  const gk = groupKey();
+  if (!gk) return {show:true};
+  const m = SAFE[name.replace(/^⚠️\s*/, '')];
+  const gs = m && m[gk];
+  if (!gs) return {show:true};
+  return {show:gs.show !== false, dose:gs.dose, warn:gs.warn};
+}
+const isETC = n => n.startsWith('⚠️') || n.includes('ETC ❌');
+
+// ── drug card ───────────────────────────────────────
+function drugCard(x, tier) {
+  // Tier A items name the drug in `d` and carry no dose; B and C use `n` + `d`.
+  const isA = tier === 'A' || tier === 'Aetc';
+  const raw = (isA ? x.d : x.n) || '';
+  const dose = isA ? '' : x.d;
+  const name = raw.replace(/^⚠️\s*/, '');
+  const s = tier === 'B' ? safety(raw) : {show:true};
+  const p = PHARM[name];
+  const etc = isETC(raw) || tier === 'Aetc';
+  return el('div', {cls:'drug' + (s.show ? '' : ' blocked')},
+    el('div', {cls:'nm'},
+      el('span', {cls:'pill ' + (!s.show ? 'no' : etc ? 'etc' : 'otc')}, !s.show ? 'KHÔNG' : etc ? 'ETC' : 'OTC'),
+      name,
+      p ? el('button', {cls:'pkbtn', title:'Xem dược lý', onclick:() => sheet(name)}, 'i') : null),
+    dose ? el('div', {cls:'dose'}, dose) : null,
+    s.dose ? el('div', {cls:'gdose'}, '⚖ ' + s.dose) : null,
+    s.warn ? el('div', {cls:'warn'}, '⚠ ' + s.warn) : null,
+    x.note ? el('div', {cls:'nt'}, x.note) : null);
+}
+
+// ── main ────────────────────────────────────────────
+// Trang tra cứu: mọi hoạt chất trong PHARM/DRUG_SAFETY đều mở được, kể cả những mục
+// không hoạt chất nào trong A/B/C trỏ tới (tên ghép như "Omeprazole / Esomeprazole").
+function renderIndex(m) {
+  const names = [...new Set([...Object.keys(PHARM), ...Object.keys(SAFE)])]
+    .sort((a, b) => a.localeCompare(b, 'vi'));
+  const q = (S.dq || '').toLowerCase();
+  const hit = names.filter(n => !q || n.toLowerCase().includes(q) || ((PHARM[n] || {}).cls || '').toLowerCase().includes(q));
+  m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '💊'),
+    el('span', {}, el('h1', {}, 'Tra cứu dược lý'),
+      el('div', {cls:'sub'}, names.length + ' hoạt chất · ' + Object.keys(PHARM).length + ' có hồ sơ dược lý · ' + Object.keys(SAFE).length + ' có dữ liệu an toàn'))));
+  m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
+    el('input', {id:'dq', placeholder:'Lọc theo tên hoạt chất hoặc nhóm dược lý…', value:S.dq || '',
+      style:'width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg)',
+      oninput:e => { S.dq = e.target.value; renderMain(); document.getElementById('dq').focus(); }}))));
+  m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, 'Hoạt chất', el('span', {cls:'tag'}, hit.length + '/' + names.length)),
+    el('div', {cls:'bd'}, el('div', {cls:'dgrid'}, hit.map(n => el('button', {cls:'dcard', onclick:() => sheet(n)},
+      el('div', {cls:'dn'}, n),
+      el('div', {cls:'dc'}, (PHARM[n] || {}).cls || el('span', {cls:'miss'}, 'chỉ có dữ liệu an toàn theo nhóm'))))))));
+  m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, '⚠ Tương tác thuốc', el('span', {cls:'tag'}, Object.keys(INTERS).length)),
+    el('div', {cls:'bd'}, Object.entries(INTERS).map(([k, v]) => el('div', {cls:'kv'},
+      el('span', {cls:'k'}, k.replace('|', ' + ')),
+      el('span', {}, el('b', {}, v.sev + ' — '), v.desc))))));
+}
+
+// ── Tab ICD 10 ─────────────────────────────────────────────────────────
+// Danh mục chẩn đoán chỉ đọc, nhúng sẵn từ ICD_10.xlsx. Bấm một mã để xem
+// thuốc nào trong Danh mục có mã đó ở ô "ICD khuyến nghị".
+function renderIcd(m) {
+  const q = rxNorm(S.iq || '').trim();
+  const hit = !q ? UD.icd : UD.icd.filter(r =>
+    rxNorm(r.code).includes(q) || rxNorm(r.dx).includes(q) || rxNorm(r.note || '').includes(q));
+
+  m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '🏷️'),
+    el('span', {}, el('h1', {}, 'Danh mục ICD 10'),
+      el('div', {cls:'sub'}, UD.icd.length + ' mã chẩn đoán'
+        + (q ? ' · khớp ' + hit.length : '') + ' · tra theo mã hoặc tên chẩn đoán'))));
+
+  if (!lsOK) m.appendChild(el('div', {cls:'warnbox miss'},
+    el('b', {}, 'Trình duyệt không cho lưu cục bộ'), 'Sửa đổi chỉ tồn tại tới khi đóng tab — hãy Xuất Excel.'));
+
+  m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
+    el('div', {cls:'tbar'},
+      el('input', {type:'search', placeholder:'Nhập mã (J06) hoặc tên chẩn đoán (viêm họng)…', value:S.iq || '',
+        oninput:e => { S.iq = e.target.value; renderMain();
+          const n = m.querySelector('input[type=search]');
+          if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }}),
+      el('button', {cls:'btn', onclick:() => openForm('icd')}, '+ Thêm mã ICD'),
+      el('button', {cls:'btn ghost', onclick:udExport, title:'Tải về .xlsx gồm mọi sheet'}, 'Xuất Excel'),
+      el('button', {cls:'btn ghost', onclick:pickImport}, 'Nạp từ Excel'),
+      el('button', {cls:'btn ghost', title:'Nạp lại 336 mã đi kèm bản build',
+        onclick:() => {
+          const add = ICD.filter(r => !UD.icd.some(x => x.code === r.code && x.dx === r.dx));
+          if (!add.length) { alert('Danh sách đã có đủ 336 mã gốc.'); return; }
+          if (!confirm('Thêm lại ' + add.length + ' mã gốc còn thiếu?\nCác mã bạn tự thêm/sửa vẫn giữ nguyên.')) return;
+          UD.icd = UD.icd.concat(add.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' })));
+          udSave(); renderMain();
+        }}, 'Khôi phục mã gốc')),
+    hit.length ? selBar('icd', hit) : null)));
+
+  if (!hit.length) {
+    m.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'}, UD.icd.length
+      ? 'Không mã nào khớp “' + S.iq + '”.'
+      : 'Danh sách đang trống. Bấm “+ Thêm mã ICD”, hoặc “Khôi phục mã gốc” để lấy lại 336 mã.')));
+    return;
+  }
+
+  const box = el('div', {cls:'card'}, el('div', {cls:'hd'}, 'Mã chẩn đoán',
+    el('span', {cls:'tag'}, hit.length + '/' + UD.icd.length)));
+  const body = el('div', {});
+  for (const r of hit) {
+    const open = S.exp['icd' + r.id];
+    const ck = el('input', {type:'checkbox', cls:'ck', title:'Chọn để xoá nhiều'});
+    ck.checked = !!S.sel[r.id];
+    ck.addEventListener('click', e => e.stopPropagation());
+    ck.addEventListener('change', () => { if (ck.checked) S.sel[r.id] = true; else delete S.sel[r.id]; renderMain(); });
+    body.appendChild(el('div', {cls:'icdrow' + (open ? ' on' : ''),
+      onclick:() => { S.exp['icd' + r.id] = !open; renderMain(); }},
+      ck,
+      el('span', {cls:'code'}, r.code),
+      el('span', {cls:'dx'}, r.dx, r.note ? el('div', {style:'font-size:11.5px;color:var(--ink3);margin-top:2px'}, r.note) : null),
+      el('span', {cls:'iact'},
+        el('button', {cls:'btn ghost sm', onclick:e => { e.stopPropagation(); openForm('icd', r); }}, 'Sửa'),
+        el('button', {cls:'btn danger sm', onclick:e => { e.stopPropagation(); delItem('icd', r); }}, 'Xoá'))));
+    if (open) {
+      const ds = UD.drugs.filter(d => rxNorm(d.icd || '').includes(rxNorm(r.code)));
+      body.appendChild(el('div', {cls:'icdsub'},
+        ds.length
+          ? [el('div', {style:'font-weight:650;margin-bottom:4px'}, 'Thuốc trong Danh mục gợi ý mã này (' + ds.length + '):'),
+             ds.map(d => el('div', {cls:'d'}, d.name + '  —  ' + (d.ing || '')))]
+          : el('div', {style:'color:var(--ink3)'}, UD.drugs.length
+              ? 'Chưa thuốc nào trong Danh mục ghi mã này ở ô “ICD khuyến nghị”.'
+              : 'Danh mục đang trống — nạp file Excel ở tab Danh mục để đối chiếu.')));
+    }
+  }
+  box.appendChild(body);
+  m.appendChild(box);
+}
+
+function renderMain() {
+  const m = document.getElementById('main');
+  m.textContent = '';
+  document.getElementById('shell').className = S.tab === 'otc' ? '' : 'wide';
+  [...document.querySelectorAll('#tabs .tab')].forEach(b => b.className = 'tab' + (b.dataset.tab === S.tab ? ' on' : ''));
+  const otcOnly = S.tab === 'otc' ? '' : 'none';
+  document.getElementById('btnIndex').style.display = otcOnly;
+  document.getElementById('btnAbout').style.display = otcOnly;
+
+  if (S.tab === 'catalog') { renderCatalog(m); return; }
+  if (S.tab === 'circular') { renderCirculars(m); return; }
+  if (S.tab === 'rx') { renderRx(m); return; }
+  if (S.tab === 'icd') { renderIcd(m); return; }
+  if (S.tab === 'inter') { renderInters(m); return; }
+  if (S.page === 'index') { renderIndex(m); return; }
+  const d = dis();
+  if (!d) { m.appendChild(el('div', {cls:'empty'}, '← Chọn một bệnh để bắt đầu')); return; }
+  const gk = groupKey(), bank = quizFor(d.id);
+
+  m.appendChild(el('div', {cls:'dtitle'},
+    el('span', {cls:'ic'}, d.icon),
+    el('span', {}, el('h1', {}, d.name), el('div', {cls:'sub'}, d.sub + ' · ' + (BATCH[d.batch] || d.batch))),
+    el('button', {cls:'quiz', disabled: !bank, onclick:() => bank && openQuiz(d)},
+      bank ? '🎯 Ôn tập (' + bank.length + ' câu)' : 'Chưa có ngân hàng câu hỏi')));
+
+  // nhóm bệnh nhân
+  const avail = GROUPS.filter(g => !g.k || !(d.noGroups || []).includes(g.k));
+  m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, 'Nhóm bệnh nhân',
+      (d.noGroups || []).length ? el('span', {cls:'tag'}, 'ẩn ' + d.noGroups.length + ' nhóm không áp dụng') : null),
+    el('div', {cls:'bd'}, el('div', {cls:'chips'}, avail.map(g =>
+      el('button', {cls:'chip' + (g.id === S.group ? ' on' : ''), onclick:() => { S.group = g.id; renderMain(); }},
+        el('span', {}, g.icon), g.label))))));
+
+  // cảnh báo riêng cho nhóm đang chọn (u3m đi kèm nhóm <2t; maoi luôn hiện nếu có)
+  const sp = d.special || {}, notes = [];
+  if (gk && sp[gk]) notes.push([KLABEL[gk], sp[gk]]);
+  if (gk === 'u2y' && sp.u3m) notes.push([KLABEL.u3m, sp.u3m]);
+  if (sp.maoi) notes.push([KLABEL.maoi, sp.maoi]);
+  notes.forEach(([t, v]) => m.appendChild(el('div', {cls:'gwarn'}, el('b', {}, t), el('div', {cls:'v'}, v))));
+
+  // Nhóm bị noGroups ẩn vẫn có hướng dẫn trong dữ liệu — không có chip nên phải liệt kê riêng,
+  // nếu không 23 đoạn hướng dẫn (đa số là "không OTC, khám BS Nhi") sẽ không xem được ở đâu cả.
+  const shownKeys = new Set(notes.map(n => n[0]));
+  const leftover = Object.keys(sp).filter(k => KLABEL[k] && !shownKeys.has(KLABEL[k])
+    && (avail.every(g => g.k !== k) || (k === 'u3m' && gk !== 'u2y')));
+  if (leftover.length) m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, 'Lưu ý cho nhóm không có nút riêng', el('span', {cls:'tag'}, leftover.length)),
+    el('div', {cls:'bd'}, leftover.map(k => el('div', {cls:'kv'},
+      el('span', {cls:'k'}, KLABEL[k]), el('span', {cls:'v'}, sp[k]))))));
+
+  // red flags
+  if (d.redFlags && d.redFlags.length) m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, '🚩 Dấu hiệu cần chuyển viện / gặp bác sĩ'),
+    el('div', {cls:'bd'}, el('div', {cls:'flags'}, d.redFlags.map(r =>
+      el('div', {cls:'flag ' + (r.u || 'med')}, el('div', {cls:'f'}, r.f), el('div', {cls:'a'}, '→ ' + r.a)))))));
+
+  // triệu chứng
+  if (d.symptoms && d.symptoms.length) m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, 'Lọc theo triệu chứng',
+      S.syms.length ? el('span', {cls:'tag'}, 'đang lọc ' + S.syms.length) : null,
+      !SF[d.id] ? el('span', {cls:'tag'}, 'bệnh này không có bộ lọc') : null),
+    el('div', {cls:'bd'}, el('div', {cls:'chips'}, d.symptoms.map((s, i) =>
+      el('button', {cls:'chip' + (S.syms.includes(i) ? ' on' : ''), onclick:() => {
+        S.syms = S.syms.includes(i) ? S.syms.filter(x => x !== i) : S.syms.concat(i);
+        renderMain();
+      }}, s))))));
+
+  // A / B / C
+  const B = filteredB(d);
+  const colA = el('div', {cls:'card col A'},
+    el('div', {cls:'hd'}, el('span', {cls:'letter'}, 'A'), 'Phác đồ & Nguyên tắc'),
+    el('div', {cls:'bd'},
+      (d.A.etc || []).length ? el('div', {cls:'grp'}, el('div', {cls:'gt'}, 'Thuốc cần kê đơn (ETC)'),
+        d.A.etc.map(x => drugCard(x, 'Aetc'))) : null,
+      (d.A.otc || []).length ? el('div', {cls:'grp'}, el('div', {cls:'gt'}, 'Điều trị căn nguyên (OTC)'),
+        d.A.otc.map(x => drugCard(x, 'A'))) : null,
+      d.A.note ? el('div', {cls:'note'}, d.A.note) : null));
+
+  const colB = el('div', {cls:'card col B'},
+    el('div', {cls:'hd'}, el('span', {cls:'letter'}, 'B'), 'Thuốc & Liều dùng',
+      B.length !== d.B.length ? el('span', {cls:'tag'}, B.length + '/' + d.B.length + ' nhóm') : null),
+    el('div', {cls:'bd'}, B.length ? B.map((g, i) => el('div', {cls:'grp'},
+      el('div', {cls:'gt'}, el('span', {cls:'n'}, i + 1), g.sym),
+      g.drugs.map(x => drugCard(x, 'B'))))
+      : el('div', {cls:'note'}, 'Không có nhóm thuốc nào khớp bộ lọc hiện tại.')));
+
+  const colC = el('div', {cls:'card col C'},
+    el('div', {cls:'hd'}, el('span', {cls:'letter'}, 'C'), 'Bổ sung & Hỗ trợ'),
+    el('div', {cls:'bd'}, (d.C || []).map(x => drugCard(x, 'C'))));
+
+  m.appendChild(el('div', {cls:'cols'}, colA, colB, colC));
+
+  // phác đồ mẫu
+  if ((d.dosing || []).length) m.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, '📋 Gợi ý công thức phối hợp'),
+    el('div', {cls:'bd'}, d.dosing.map(r => {
+      const hits = (r.ints || []).flatMap(t => Object.entries(INTERS)
+        .filter(([k]) => k.split('|')[0] === t)
+        .map(([k, v]) => k.replace('|', ' + ') + ' — ' + v.sev + ': ' + v.desc));
+      return el('div', {cls:'reg'},
+        el('div', {cls:'rn'}, r.name),
+        el('ul', {}, r.drugs.map(x => el('li', {}, x))),
+        r.note ? el('div', {cls:'rnote'}, r.note) : null,
+        hits.map(t => el('div', {cls:'int'}, '⚠ ' + t)));
+    }))));
+}
+
+// ── pharmacology sheet ──────────────────────────────
+function sheet(name) {
+  const p = PHARM[name] || null, s = SAFE[name] || null;
+  if (!p && !s) return;
+  close();
+  const rows = p ? [['Cơ chế', p.mech], ['Dược động học', p.pk], ['Chống chỉ định', p.ci],
+    ['Cảnh báo', p.warn], ['Liều tối đa', p.dmax]] : [];
+  // Duyệt theo key có thật trong dữ liệu (KLABEL) thay vì theo 11 nút — nếu không, u3m bị bỏ sót.
+  const keys = s ? Object.keys(KLABEL).filter(k => s[k]) : [];
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov', onclick:close}));
+  document.body.appendChild(el('div', {cls:'sheet', id:'sh'},
+    el('button', {cls:'x', onclick:close}, '✕'),
+    el('h2', {}, name), el('div', {cls:'cls'}, p ? (p.cls || '') : 'Chỉ có dữ liệu an toàn theo nhóm'),
+    el('dl', {}, rows.filter(r => r[1]).map(r => [el('dt', {}, r[0]), el('dd', {}, r[1])])),
+    keys.length ? el('div', {},
+      el('dt', {style:'font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-top:18px'}, 'An toàn theo nhóm (' + keys.length + ')'),
+      keys.map(k => el('dd', {style:'margin-top:6px'},
+        el('b', {}, (s[k].show === false ? '⛔ ' : '✅ ') + KLABEL[k] + ': '),
+        [s[k].dose, s[k].warn].filter(Boolean).join(' — ') || (s[k].show === false ? 'không dùng' : 'dùng được')))) : null));
+}
+function close() { ['ov', 'sh', 'md'].forEach(i => { const n = document.getElementById(i); if (n) n.remove(); }); }
+document.addEventListener('keydown', e => e.key === 'Escape' && close());
+
+// ── CRUD Danh mục / Thông tư ────────────────────────
+function openForm(kind, item) {
+  const K = KIND[kind], editing = !!item;
+  close();
+  const inputs = {}, err = el('div', {cls:'ferr', style:'display:none'});
+  const rows = K.fields.map(f => {
+    const inp = f.choices
+      ? el('select', {cls:'fi'}, [''].concat(f.choices).map(o => el('option', {value:o}, o || '— chọn —')))
+      : f.area ? el('textarea', {cls:'fi', rows:f.big ? 14 : 3}) : el('input', {cls:'fi', type:'text'});
+    inp.value = (item && item[f.k]) || '';   // textarea/select không nhận thuộc tính value
+    inputs[f.k] = inp;
+    return el('div', {cls:'frow'}, el('label', {}, f.label + (f.req ? ' *' : '')), inp);
+  });
+  const save = () => {
+    const o = {};
+    K.fields.forEach(f => o[f.k] = inputs[f.k].value.trim());
+    const miss = K.fields.filter(f => f.req && !o[f.k]);
+    if (miss.length) {
+      err.textContent = 'Chưa nhập: ' + miss.map(f => f.label).join(', ');
+      err.style.display = ''; inputs[miss[0].k].focus();
+      return;
+    }
+    if (editing) Object.assign(item, o);
+    else { K.list().unshift(Object.assign({id:uid()}, o)); }
+    udSave(); close(); renderMain();
+  };
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov', onclick:e => e.target.id === 'ov' && close()},
+    el('div', {cls:'modal', id:'md'},
+      el('button', {cls:'x', onclick:close}, '✕'),
+      el('h2', {style:'font-size:17px;margin-bottom:14px'}, (editing ? 'Sửa ' : 'Thêm ') + K.label),
+      err, rows,
+      el('div', {cls:'tbar', style:'justify-content:flex-end'},
+        el('button', {cls:'btn ghost', onclick:close}, 'Huỷ'),
+        el('button', {cls:'btn', onclick:save}, editing ? 'Lưu thay đổi' : 'Thêm')))));
+  inputs[K.fields[0].k].focus();
+}
+
+function delItem(kind, item) {
+  const K = KIND[kind];
+  if (!confirm('Xoá ' + K.label + ' "' + titleOf(kind, item) + '"?\nKhông hoàn tác được.')) return;
+  const list = K.list(), i = list.indexOf(item);
+  if (i >= 0) list.splice(i, 1);
+  delete S.sel[item.id];
+  udSave(); renderMain();
+}
+
+// Xoá nhiều: chỉ tác động lên các mục đang được tick (S.sel).
+function delSelected(kind) {
+  const K = KIND[kind], list = K.list();
+  const doomed = list.filter(x => S.sel[x.id]);
+  if (!doomed.length) return;
+  const names = doomed.slice(0, 6).map(x => '• ' + titleOf(kind, x)).join('\n');
+  if (!confirm('Xoá ' + doomed.length + ' ' + K.label + ' đã chọn?\n\n' + names
+    + (doomed.length > 6 ? '\n… và ' + (doomed.length - 6) + ' mục nữa' : '') + '\n\nKhông hoàn tác được.')) return;
+  const keep = list.filter(x => !S.sel[x.id]);
+  list.length = 0; keep.forEach(x => list.push(x));
+  doomed.forEach(x => delete S.sel[x.id]);
+  udSave(); renderMain();
+}
+
+// ── Excel ───────────────────────────────────────────
+// Tiêu đề cột = nhãn trường, để file xuất ra sửa trong Excel rồi nhập lại được ngay.
+const SHEET = {drug:'Danh mục', circular:'Thông tư', inter:'Tương tác', icd:'ICD 10'};
+const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
+
+function udExport() {
+  if (!UD.drugs.length && !UD.circulars.length && !UD.inters.length && !UD.icd.length) {
+    alert('Chưa có dữ liệu để xuất.'); return;
+  }
+  const wb = XLSX.utils.book_new();
+  for (const kind of ['drug', 'circular', 'inter', 'icd']) {
+    const K = KIND[kind];
+    const rows = K.list().map(x => {
+      const r = {};
+      K.fields.forEach(f => r[f.label] = x[f.k] || '');
+      return r;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows
+      : [K.fields.reduce((o, f) => (o[f.label] = '', o), {})]);   // sheet rỗng vẫn giữ hàng tiêu đề
+    ws['!cols'] = K.fields.map(f => ({wch:f.area ? 46 : 24}));
+    XLSX.utils.book_append_sheet(wb, ws, SHEET[kind]);
+  }
+  saveBytes(XLSX.write(wb, {bookType:'xlsx', type:'array'}), 'danhmuc-thongtu.xlsx');
+}
+
+// Chạy trong app Neutralino thì WKWebView chặn <a download> → phải dùng hộp thoại hệ thống.
+const inApp = () => typeof window.Neutralino === 'object' && !!window.NL_TOKEN;
+
+async function saveBytes(bytes, filename) {
+  if (inApp()) {
+    try {
+      const p = await Neutralino.os.showSaveDialog('Lưu file Excel',
+        {defaultPath:filename, filters:[{name:'Excel', extensions:['xlsx']}]});
+      if (!p) return;
+      const path = /\.xlsx$/i.test(p) ? p : p + '.xlsx';
+      await Neutralino.filesystem.writeBinaryFile(path, bytes.buffer || bytes);
+      await Neutralino.os.showMessageBox('Đã lưu', 'Đã lưu file:\n' + path);
+    } catch (e) { alert('Không lưu được file: ' + (e.message || e)); }
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([bytes],
+    {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  const a = el('a', {href:url, download:filename});
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Nhận diện sheet theo tên, nếu không khớp thì theo tiêu đề cột — để nhập được cả
+// file người dùng tự soạn, miễn có cột "Hoạt chất" (thuốc) hoặc "Nội dung" (thông tư).
+function kindOfSheet(name, headers) {
+  const n = norm(name), h = headers.map(norm);
+  if (n === norm(SHEET.drug) || h.includes('hoạt chất')) return 'drug';
+  if (n === norm(SHEET.inter) || (h.includes('hoạt chất a') && h.includes('hoạt chất b'))) return 'inter';
+  if (n === norm(SHEET.icd) || h.includes('mã icd')) return 'icd';
+  if (n === norm(SHEET.circular) || h.includes('nội dung')) return 'circular';
+  return null;
+}
+function rowsToItems(kind, rows) {
+  const K = KIND[kind], out = [];
+  for (const row of rows) {
+    const o = {};
+    for (const f of K.fields) {
+      // Nhận cả nhãn chính lẫn nhãn cũ; nếu file có nhiều cột khớp thì nối lại.
+      const want = [f.label].concat(f.alias || []).map(norm);
+      const vals = Object.keys(row)
+        .filter(h => want.includes(norm(h)))
+        .sort((a, b) => want.indexOf(norm(a)) - want.indexOf(norm(b)))
+        .map(h => String(row[h] == null ? '' : row[h]).trim())
+        .filter(Boolean);
+      o[f.k] = [...new Set(vals)].join(' — ');
+    }
+    const ok = K.valid ? K.valid(o) : !!o.name;
+    if (!ok) continue;                           // bỏ hàng trống / hàng chú thích
+    out.push(Object.assign({id:uid()}, o));
+  }
+  return out;
+}
+function udImport(file) {
+  const r = new FileReader();
+  r.onerror = () => alert('Không đọc được file.');
+  r.onload = () => applyWorkbook(new Uint8Array(r.result));
+  r.readAsArrayBuffer(file);
+}
+function applyWorkbook(u8) {
+  {
+    let wb;
+    try { wb = XLSX.read(u8, {type:'array'}); }
+    catch (e) { alert('File không phải Excel hợp lệ.\n\n' + e.message); return; }
+    const found = {drug:[], circular:[], inter:[], icd:[]}, skipped = [];
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const headers = (XLSX.utils.sheet_to_json(ws, {header:1})[0] || []);
+      const kind = kindOfSheet(name, headers);
+      if (!kind) { skipped.push(name); continue; }
+      found[kind] = found[kind].concat(rowsToItems(kind, rows));
+    }
+    const nd = found.drug.length, nc = found.circular.length, ni = found.inter.length, nx = found.icd.length;
+    if (!nd && !nc && !ni && !nx) {
+      alert('Không tìm thấy dòng nào dùng được.\n\nCần sheet tên “Danh mục” / “Thông tư” / “Tương tác”, '
+        + 'hoặc có cột “Hoạt chất” / “Nội dung” / “Hoạt chất A”+“Hoạt chất B”, '
+        + 'và cột tên tương ứng không để trống.'
+        + (skipped.length ? '\n\nĐã bỏ qua sheet: ' + skipped.join(', ') : ''));
+      return;
+    }
+    const msg = 'Đọc được ' + nd + ' thuốc, ' + nc + ' thông tư, ' + ni + ' cặp tương tác và ' + nx + ' mã ICD từ Excel.'
+      + (skipped.length ? '\n(Bỏ qua sheet: ' + skipped.join(', ') + ')' : '')
+      + '\n\nOK = THÊM vào dữ liệu hiện có (' + UD.drugs.length + ' thuốc, ' + UD.circulars.length
+      + ' thông tư, ' + UD.inters.length + ' cặp tương tác).'
+      + '\nCancel = dừng, không thay đổi gì.';
+    if (!confirm(msg)) return;
+    if (nd) UD.drugs = found.drug.concat(UD.drugs);
+    if (nc) UD.circulars = found.circular.concat(UD.circulars);
+    if (ni) UD.inters = found.inter.concat(UD.inters);
+    if (nx) UD.icd = found.icd.concat(UD.icd);
+    udSave(); renderMain();
+  }
+}
+async function pickImport() {
+  if (inApp()) {
+    try {
+      const paths = await Neutralino.os.showOpenDialog('Chọn file Excel',
+        {filters:[{name:'Excel / CSV', extensions:['xlsx', 'xls', 'csv']}], multiSelections:false});
+      if (!paths || !paths.length) return;
+      const buf = await Neutralino.filesystem.readBinaryFile(paths[0]);
+      applyWorkbook(new Uint8Array(buf));
+    } catch (e) { alert('Không đọc được file: ' + (e.message || e)); }
+    return;
+  }
+  const inp = el('input', {type:'file', accept:'.xlsx,.xls,.csv', style:'display:none'});
+  inp.addEventListener('change', () => { if (inp.files[0]) udImport(inp.files[0]); inp.remove(); });
+  document.body.appendChild(inp); inp.click();
+}
+
+// Thanh chọn nhiều: "chọn tất cả" áp dụng cho các mục ĐANG hiện (sau khi lọc),
+// nên xoá nhiều sau khi tìm kiếm sẽ không đụng tới mục ngoài kết quả.
+function selBar(kind, hit) {
+  const K = KIND[kind];
+  const n = K.list().filter(x => S.sel[x.id]).length;
+  const allOn = hit.length > 0 && hit.every(x => S.sel[x.id]);
+  const cb = el('input', {type:'checkbox', cls:'ck'});
+  cb.checked = allOn;
+  cb.addEventListener('change', () => {
+    hit.forEach(x => { if (cb.checked) S.sel[x.id] = true; else delete S.sel[x.id]; });
+    renderMain();
+  });
+  return el('div', {cls:'selbar'},
+    el('label', {}, cb, 'Chọn tất cả' + (hit.length !== K.list().length ? ' ' + hit.length + ' kết quả' : '')),
+    n ? el('span', {cls:'cnt'}, 'đã chọn ' + n) : null,
+    n ? el('button', {cls:'btn danger sm', onclick:() => delSelected(kind)}, 'Xoá ' + n + ' mục đã chọn') : null,
+    n ? el('button', {cls:'btn ghost sm', onclick:() => { S.sel = {}; renderMain(); }}, 'Bỏ chọn') : null);
+}
+
+// Danh sách chung cho cả hai tab.
+function renderList(m, kind, opts) {
+  const K = KIND[kind], all = K.list();
+  const q = (S[opts.qk] || '').toLowerCase().trim();
+  const hit = q ? all.filter(x => opts.searchIn(x).toLowerCase().includes(q)) : all;
+
+  m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, opts.icon),
+    el('span', {}, el('h1', {}, opts.title),
+      el('div', {cls:'sub'}, all.length + ' ' + K.label + (q ? ' · khớp ' + hit.length : '') + ' · ' + opts.hint))));
+
+  if (!lsOK) m.appendChild(el('div', {cls:'warnbar'},
+    'Trình duyệt không cho lưu cục bộ ở trang này. Dữ liệu chỉ tồn tại tới khi đóng tab — hãy bấm Xuất Excel để giữ lại.'));
+
+  m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'}, el('div', {cls:'tbar'},
+    el('input', {type:'search', placeholder:opts.ph, value:S[opts.qk] || '',
+      oninput:e => { S[opts.qk] = e.target.value; renderMain(); const n = m.querySelector('input[type=search]'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }}),
+    el('button', {cls:'btn', onclick:() => openForm(kind)}, '+ Thêm ' + K.label),
+    el('button', {cls:'btn ghost', onclick:udExport, title:'Tải về file .xlsx (2 sheet: Danh mục, Thông tư)'}, 'Xuất Excel'),
+    el('button', {cls:'btn ghost', onclick:pickImport, title:'Đọc file .xlsx / .csv và thêm vào danh sách'}, 'Nạp từ Excel')),
+    hit.length ? selBar(kind, hit) : null)));
+
+  if (!hit.length) {
+    m.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'},
+      all.length ? 'Không có ' + K.label + ' nào khớp “' + q + '”.'
+        : 'Chưa có ' + K.label + ' nào. Bấm “+ Thêm ' + K.label + '” để bắt đầu'
+          + ', hoặc “Nạp từ Excel” để nhập từ file có sẵn.')));
+    return;
+  }
+
+  m.appendChild(el('div', {}, hit.map(x => {
+    const open = !!S.exp[x.id], picked = !!S.sel[x.id];
+    const ck = el('input', {type:'checkbox', cls:'ck', title:'Chọn để xoá nhiều'});
+    ck.checked = picked;
+    ck.addEventListener('click', e => e.stopPropagation());
+    ck.addEventListener('change', () => { if (ck.checked) S.sel[x.id] = true; else delete S.sel[x.id]; renderMain(); });
+    return el('div', {cls:'item' + (open ? ' open' : '') + (picked ? ' sel' : '')},
+      el('div', {cls:'ihead', onclick:() => { S.exp[x.id] = !open; renderMain(); }},
+        ck,
+        el('span', {cls:'car'}, open ? '▼' : '▶'),
+        el('span', {cls:'grow'}, el('div', {cls:'inm'}, titleOf(kind, x)),
+          el('div', {cls:'iing'}, opts.sub(x))),
+        el('span', {cls:'iact'},
+          el('button', {cls:'btn ghost sm', onclick:e => { e.stopPropagation(); openForm(kind, x); }}, 'Sửa'),
+          el('button', {cls:'btn danger sm', onclick:e => { e.stopPropagation(); delItem(kind, x); }}, 'Xoá'))),
+      open ? el('div', {cls:'ibody'}, K.fields.filter(f => f.k !== 'name' && x[f.k])
+        .map(f => el('div', {cls:'kv'}, el('span', {cls:'k'}, f.label), el('span', {cls:'v'}, x[f.k])))) : null);
+  })));
+}
+
+const renderCatalog = m => renderList(m, 'drug', {
+  icon:'🗂️', title:'Danh mục thuốc', qk:'cq', hint:'tìm theo tên, hoạt chất hoặc nhóm dược lý',
+  ph:'Tìm theo tên thuốc, hoạt chất hoặc nhóm dược lý…',
+  searchIn:x => [x.name, x.ing, x.cls].filter(Boolean).join(' '),
+  sub:x => [x.ing, x.cls].filter(Boolean).join(' · ') || '—',
+});
+// Tab Tương tác — thao tác theo THUỐC: chọn một thuốc bên trái, bên phải hiện mọi thuốc
+// tương tác với nó và cho thêm trực tiếp. Dữ liệu vẫn lưu theo CẶP HOẠT CHẤT nên một cặp
+// phủ mọi biệt dược chứa hoạt chất đó, và quan hệ tự nhiên hai chiều: mở B luôn thấy A.
+const interHas = (d, term) => {
+  const t = rxNorm(term).trim();
+  return t.length >= 3 && (' ' + rxNorm((d.ing || '') + ' ' + (d.name || '')) + ' ').includes(' ' + t + ' ');
+};
+function intersOf(d) {
+  return UD.inters
+    .filter(r => (r.a && interHas(d, r.a)) || (r.b && interHas(d, r.b)))
+    .map(r => ({ rule:r, other: interHas(d, r.a) ? r.b : r.a }))
+    .sort((p, q) => (SEV.indexOf(p.rule.sev) + 9) % 100 - (SEV.indexOf(q.rule.sev) + 9) % 100);
+}
+// Tách tên hoạt chất khỏi hàm lượng: "Clarithromycin 500 mg/viên" → "Clarithromycin".
+function ingTerms(d) {
+  return String(d && d.ing || '').split(/[;+,/]| và /)
+    .map(p => p.replace(/\([^)]*\)/g, ' ').trim())
+    .map(p => { const m = p.match(/^[^0-9]+/); return (m ? m[0] : p).trim().replace(/\s+/g, ' '); })
+    .filter(p => p.length >= 3).slice(0, 4);
+}
+
+function openInterForm(dA, dB, existing) {
+  close();
+  const inputs = {}, err = el('div', {cls:'ferr', style:'display:none'});
+  const pre = { a: existing ? existing.a : (ingTerms(dA)[0] || ''),
+                b: existing ? existing.b : (ingTerms(dB)[0] || '') };
+  const rows = INTER_FIELDS.map(f => {
+    let inp;
+    if (f.choices) inp = el('select', {cls:'fi'}, [''].concat(f.choices).map(o => el('option', {value:o}, o || '— chọn —')));
+    else if (f.area) inp = el('textarea', {cls:'fi', rows:3});
+    else inp = el('input', {cls:'fi', type:'text'});
+    inp.value = existing ? (existing[f.k] || '') : (pre[f.k] || '');
+    inputs[f.k] = inp;
+    const hint = (f.k === 'a' && dA) ? ' — lấy từ ' + dA.name
+               : (f.k === 'b' && dB) ? ' — lấy từ ' + dB.name : '';
+    return el('div', {cls:'frow'}, el('label', {}, f.label + (f.req ? ' *' : '') + hint), inp);
+  });
+  const save = () => {
+    const o = {};
+    INTER_FIELDS.forEach(f => o[f.k] = inputs[f.k].value.trim());
+    if (!o.a || !o.b) { err.textContent = 'Chưa nhập: Hoạt chất A và Hoạt chất B'; err.style.display = ''; return; }
+    if (existing) Object.assign(existing, o);
+    else UD.inters.unshift(Object.assign({id:uid()}, o));
+    udSave(); close(); renderMain();
+  };
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov', onclick:e => e.target.id === 'ov' && close()},
+    el('div', {cls:'modal', id:'md'},
+      el('button', {cls:'x', onclick:close}, '✕'),
+      el('h2', {style:'font-size:17px;margin-bottom:4px'}, existing ? 'Sửa cặp tương tác' : 'Thêm cặp tương tác'),
+      el('div', {cls:'sub', style:'margin-bottom:14px'},
+        'Lưu theo hoạt chất, nên cặp này áp dụng cho mọi biệt dược chứa hai hoạt chất đó.'),
+      err, rows,
+      el('div', {cls:'tbar', style:'justify-content:flex-end'},
+        el('button', {cls:'btn ghost', onclick:close}, 'Huỷ'),
+        el('button', {cls:'btn', onclick:save}, existing ? 'Lưu thay đổi' : 'Thêm')))));
+  inputs.a.focus();
+}
+
+// Bảng chọn thuốc thứ hai để ghép cặp.
+function openPickPartner(dA) {
+  close();
+  const box = el('div', {cls:'hits', style:'max-height:46vh;margin-top:10px'});
+  const draw = q => {
+    box.textContent = '';
+    const hit = UD.drugs.filter(d => d !== dA &&
+      (!q || rxNorm(d.name + ' ' + d.ing).includes(rxNorm(q)))).slice(0, 80);
+    if (!hit.length) { box.appendChild(el('div', {cls:'empty2'}, 'Không có thuốc nào khớp.')); return; }
+    hit.forEach(d => box.appendChild(el('button', {cls:'hit', onclick:() => openInterForm(dA, d)},
+      el('div', {cls:'hn'}, d.name), el('div', {cls:'hi'}, d.ing || '—'))));
+  };
+  draw('');
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov', onclick:e => e.target.id === 'ov' && close()},
+    el('div', {cls:'modal', id:'md'},
+      el('button', {cls:'x', onclick:close}, '✕'),
+      el('h2', {style:'font-size:17px;margin-bottom:4px'}, 'Chọn thuốc tương tác với'),
+      el('div', {cls:'sub', style:'margin-bottom:12px'}, dA.name),
+      el('input', {cls:'fi', type:'search', placeholder:'Tìm theo tên thuốc hoặc hoạt chất…',
+        oninput:e => draw(e.target.value)}),
+      box)));
+}
+
+function renderInters(m) {
+  m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '⚠️'),
+    el('span', {}, el('h1', {}, 'Tương tác thuốc'),
+      el('div', {cls:'sub'}, UD.inters.length + ' cặp đã khai · lưu theo hoạt chất nên áp dụng cho mọi biệt dược'))));
+
+  m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'}, el('div', {cls:'tbar'},
+    el('span', {style:'font-size:12.5px;color:var(--ink2);flex:1;min-width:160px'},
+      'Chọn thuốc bên trái → thêm thuốc tương tác với nó. Dữ liệu lưu theo cặp hoạt chất.'),
+    el('button', {cls:'btn', onclick:() => openInterForm(null, null)}, '+ Thêm cặp thủ công'),
+    el('button', {cls:'btn ghost', onclick:udExport, title:'Tải về .xlsx gồm mọi sheet'}, 'Xuất Excel'),
+    el('button', {cls:'btn ghost', onclick:pickImport}, 'Nạp từ Excel')))));
+
+  if (!UD.drugs.length) {
+    m.appendChild(el('div', {cls:'warnbox miss'}, el('b', {}, 'Danh mục đang trống'),
+      'Tab này chọn thuốc từ Danh mục. Sang tab Danh mục → Nạp từ Excel trước.'));
+    return;
+  }
+
+  const q = rxNorm(S.xq || '');
+  const list = UD.drugs.filter(d => !q || rxNorm(d.name + ' ' + d.ing).includes(q));
+  const sel = UD.drugs.find(d => d.id === S.xsel) || null;
+
+  const left = el('div', {},
+    el('div', {cls:'card'}, el('div', {cls:'bd'},
+      el('input', {cls:'fi', type:'search', placeholder:'Tìm thuốc…', value:S.xq || '',
+        oninput:e => { S.xq = e.target.value; renderMain();
+          const n = m.querySelector('input[type=search]');
+          if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }}))),
+    el('div', {cls:'ixlist'}, list.length
+      ? list.map(d => {
+          const n = intersOf(d).length;
+          return el('button', {cls:'ixpick' + (sel === d ? ' on' : ''),
+            onclick:() => { S.xsel = d.id; renderMain(); }},
+            el('span', {cls:'nm'}, el('div', {}, d.name), el('div', {cls:'ig'}, d.ing || '—')),
+            el('span', {cls:'cnt' + (n ? '' : ' zero')}, n));
+        })
+      : el('div', {cls:'empty2'}, 'Không có thuốc nào khớp.')));
+
+  const right = el('div', {});
+  if (!sel) {
+    right.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'},
+      'Chọn một thuốc bên trái để xem và thêm thuốc tương tác với nó.\n'
+      + 'Con số bên phải mỗi dòng là số tương tác đã khai của thuốc đó.')));
+  } else {
+    const rows = intersOf(sel);
+    right.appendChild(el('div', {cls:'card'},
+      el('div', {cls:'hd'}, sel.name, el('span', {cls:'tag'}, rows.length + ' tương tác'),
+        el('span', {style:'margin-left:auto'},
+          el('button', {cls:'btn sm', onclick:() => openPickPartner(sel)}, '+ Thêm thuốc tương tác'))),
+      el('div', {cls:'bd'}, rows.length
+        ? rows.map(x => el('div', {cls:'ixcard'},
+            el('div', {cls:'top'},
+              el('span', {cls:'sevtag ' + sevCls(x.rule.sev)}, x.rule.sev || 'chưa rõ mức'),
+              el('span', {cls:'other'}, x.other),
+              el('button', {cls:'btn ghost sm', onclick:() => openInterForm(null, null, x.rule)}, 'Sửa'),
+              el('button', {cls:'btn danger sm', onclick:() => {
+                if (!confirm('Xoá cặp "' + x.rule.a + ' ✕ ' + x.rule.b + '"?\nKhông hoàn tác được.')) return;
+                const i = UD.inters.indexOf(x.rule); if (i >= 0) UD.inters.splice(i, 1);
+                udSave(); renderMain();
+              }}, 'Xoá')),
+            el('div', {cls:'kvv'}, el('b', {}, 'Cặp hoạt chất: '), x.rule.a + '  ✕  ' + x.rule.b),
+            x.rule.effect ? el('div', {cls:'kvv'}, el('b', {}, 'Hậu quả: '), x.rule.effect) : null,
+            x.rule.action ? el('div', {cls:'kvv'}, el('b', {}, 'Xử trí: '), x.rule.action) : null,
+            x.rule.note ? el('div', {cls:'kvv'}, el('b', {}, 'Ghi chú: '), x.rule.note) : null,
+            el('div', {cls:'kvv', style:'color:var(--ink3);font-size:11.5px'},
+              'Áp dụng cho mọi thuốc chứa 2 hoạt chất này: '
+              + UD.drugs.filter(d => interHas(d, x.rule.a) || interHas(d, x.rule.b)).length + ' sản phẩm')))
+        : el('div', {cls:'empty2'}, 'Chưa khai tương tác nào cho thuốc này.\nBấm “+ Thêm thuốc tương tác”.'))));
+  }
+
+  m.appendChild(el('div', {cls:'ixwrap'}, left, right));
+}
+
+const renderCirculars = m => renderList(m, 'circular', {
+  icon:'📜', title:'Thông tư', qk:'tq', hint:'tìm theo tên hoặc nội dung',
+  ph:'Tìm theo tên thông tư hoặc nội dung…',
+  searchIn:x => (x.name || '') + ' ' + (x.body || ''),
+  sub:x => (x.body || '').replace(/\s+/g, ' ').slice(0, 110) || '—',
+});
+
+// ── Kiểm tra đơn thuốc ──────────────────────────────
+// Không OCR: tesseract đọc sai hàm lượng ngay cả với chữ in (đã thử), đơn viết tay thì
+// vô vọng — sai một con số liều là hậu quả thật. Ảnh để người đọc, còn máy lo việc
+// máy làm tốt hơn người: đối chiếu danh mục và bắt trùng hoạt chất.
+function rxSetImage(file) {
+  if (!file || !/^image\//.test(file.type)) { alert('Chỉ nhận file ảnh.'); return; }
+  const r = new FileReader();
+  r.onload = () => { S.rxImg = r.result; S.rxZoom = false; S.rxText = ''; S.rxOcrState = ''; S.rxAuto = 0; S.rxPartial = 0; renderMain(); };
+  r.onerror = () => alert('Không đọc được ảnh.');
+  r.readAsDataURL(file);
+}
+
+// ── OCR: chỉ dùng để nhận TÊN thuốc ────────────────────────────────────
+// Đo thực tế trên ảnh bảng BHYT: tên và hoạt chất đọc đúng 5/5, nhưng SỐ thì sai
+// (10→40, 190→490, 41→a1, 14→44). Nên OCR chỉ để gợi ý tên; liều luôn lấy từ Danh mục.
+let ocrWorker = null;
+const b64ToBytes = s => { const b = atob(s); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
+
+async function getOcrWorker() {
+  if (ocrWorker) return ocrWorker;
+  const A = window.__OCR_ASSETS;
+  if (!A || typeof Tesseract === 'undefined') throw new Error('Bản build này không có sẵn OCR.');
+  ocrWorker = await Tesseract.createWorker([{code:'eng', data:b64ToBytes(A.eng)}], 1, {
+    // core đã được nối vào chính worker; workerBlobURL:false để không bọc thêm một blob
+    // rồi importScripts — trên file:// bước đó bị chặn.
+    workerPath: URL.createObjectURL(new Blob([b64ToBytes(A.worker)], {type:'text/javascript'})),
+    workerBlobURL: false, cacheMethod: 'none', legacyCore: false, legacyLang: false,
+    logger: m => {
+      if (!m.status) return;
+      S.rxOcrState = m.status + (m.progress ? ' ' + Math.round(m.progress * 100) + '%' : '');
+      const n = document.getElementById('ocrState'); if (n) n.textContent = S.rxOcrState;
+    },
+  });
+  // psm 4 = nhiều cột chữ cỡ khác nhau; đo được là chế độ đọc bảng tốt nhất.
+  await ocrWorker.setParameters({ tessedit_pageseg_mode: '4' });
+  return ocrWorker;
+}
+// Phóng to 2x KHÔNG nội suy. Đo được: 2x có imageSmoothing='high' làm chữ nhoè và OCR ra rác
+// (chỉ đọc nổi dòng đầu), còn nearest-neighbour thì đọc sạch. 3x cũng ra rác.
+function upscale2x(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = im.naturalWidth * 2; c.height = im.naturalHeight * 2;
+      const x = c.getContext('2d');
+      x.imageSmoothingEnabled = false;
+      x.drawImage(im, 0, 0, c.width, c.height);
+      resolve(c);
+    };
+    im.onerror = () => reject(new Error('không mở được ảnh'));
+    im.src = src;
+  });
+}
+async function rxRunOcr() {
+  if (!S.rxImg) return;
+  S.rxOcrState = 'đang chuẩn bị…'; S.rxBusy = true; S.rxText = ''; S.rxAuto = 0; S.rxPartial = 0; renderMain();
+  try {
+    const w = await getOcrWorker();
+    // Lượt 1: ảnh nguyên bản — với ảnh chụp màn hình thì đây đã là kết quả tốt nhất.
+    S.rxText = ((await w.recognize(S.rxImg)).data.text || '').trim();
+    // Lượt 2 chỉ khi lượt 1 không khớp được thuốc nào: phóng to 2x rồi thử lại,
+    // giúp ảnh nhỏ / chụp xa. Giữ lượt nào khớp được nhiều thuốc hơn.
+    if (!rxScan().sure.length) {
+      S.rxOcrState = 'thử lại với ảnh phóng to…'; renderMain();
+      const t1 = S.rxText, n1 = 0;
+      S.rxText = ((await w.recognize(await upscale2x(S.rxImg))).data.text || '').trim();
+      if (rxScan().sure.length === n1 && t1.length > S.rxText.length) S.rxText = t1;
+    }
+    // Tự đưa các thuốc khớp chắc theo tên sang cột phải luôn, kèm đủ thông tin từ Danh mục —
+    // đó là việc người dùng cần thấy ngay. Khớp mơ hồ thì vẫn để họ chọn.
+    const sc = rxScan();
+    sc.sure.forEach(x => S.rxItems.push({ id:uid(), drug:x.drug, auto:true, partial:x.partial }));
+    S.rxAuto = sc.sure.length;
+    S.rxPartial = sc.sure.filter(x => x.partial).length;
+    S.rxOcrState = S.rxText ? '' : 'không đọc được chữ nào trong ảnh';
+  } catch (e) {
+    S.rxOcrState = 'lỗi OCR: ' + (e && e.message || e);
+  }
+  S.rxBusy = false; renderMain();
+}
+
+// Đối chiếu chữ OCR với Danh mục. Danh mục đóng vai trò sửa lỗi: chỉ cần một từ đặc trưng
+// trong tên (hoặc hoạt chất) xuất hiện là khớp, nên OCR sai vài ký tự vẫn tìm ra đúng thuốc.
+const deAccent = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+const rxNorm = s => deAccent(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// Từ hoạt chất quá phổ thông, khớp theo chúng thì trúng hàng chục sản phẩm → vô dụng.
+const GENERIC_ING = new Set(['natri', 'kali', 'calci', 'calcium', 'magnesi', 'acid', 'vitamin',
+  'nuoc', 'muoi', 'cao', 'kho', 'dang', 'duoi', 'tuong', 'duong', 'hydroclorid', 'hydrochlorid',
+  'sulfat', 'besylat', 'maleat', 'natrium']);
+
+// Quét THEO TỪNG DÒNG. Khớp theo tên thuốc là gần như chắc chắn (tên riêng, đặc trưng);
+// khớp theo hoạt chất thì mơ hồ — "paracetamol" trúng cả chục sản phẩm — nên chỉ dùng để
+// đánh dấu "cần chọn tay" chứ không tự gợi ý thêm.
+function rxScan() {
+  const empty = { sure: [], amb: [] };
+  if (!S.rxText || !UD.drugs.length) return empty;
+  const added = new Set(S.rxItems.filter(x => x.drug).map(x => x.drug.name));
+  // Bỏ dòng tiêu đề bảng ("Tên | Hoạt chất | ĐVT | S.Lượng…") — nó khớp rác, ví dụ "Phong ra toa"
+  // trúng hoạt chất của 6 thuốc.
+  const isHeader = l => /hoat chat|s luon|don gia|thanh ti|phong ra/.test(l);
+  const lines = S.rxText.split('\n').map(rxNorm)
+    .filter(l => l.replace(/[^a-z]/g, '').length >= 4 && !isHeader(l));
+  const sure = [], amb = [], seen = new Set();
+
+  const nums = s => String(s).match(/[0-9]+/g) || [];
+
+  for (const line of lines) {
+    const pad = ' ' + line + ' ';
+    // 1) khớp theo tên — thu TẤT CẢ ứng viên rồi mới quyết, không lấy ngay cái đầu tiên.
+    // Phần mềm BHYT cắt cụt nội dung theo bề rộng cột ("Spiramycin + met", "Paracetamol (acet"),
+    // nên tên thuốc cũng có thể mất đuôi → chấp nhận cả khớp theo PHẦN ĐẦU tên.
+    // Tên thuốc nằm ở CỘT ĐẦU nên phải ưu tiên theo vị trí từ. Không có luật này thì dòng
+    // "Usalukas 5 Natri montelukast" bị khớp thành NATRI CLORID — chữ "natri" ở cột hoạt chất
+    // lại trùng đúng tên một thuốc khác trong Danh mục.
+    const toks = line.split(' ');
+    let cands = [];
+    for (const d of UD.drugs) {
+      const nameToks = rxNorm(d.name).split(' ').filter(w => w.length >= 5);
+      let best = null;
+      for (let i = 0; i < toks.length && i <= 4; i++) {
+        const t = toks[i];
+        if (t.length < 5) continue;
+        for (const w of nameToks) {
+          let sc = 0;
+          if (t === w) sc = 3;                    // khớp đủ chữ
+          else if (w.startsWith(t)) sc = 2;       // tên trên ảnh bị cắt đuôi
+          else if (t.startsWith(w)) sc = 2;       // OCR dính thêm ký tự vào đuôi
+          if (!sc) continue;
+          if (!best || i < best.pos || (i === best.pos
+              && (sc > best.sc || (sc === best.sc && t.length > best.w.length)))) {
+            best = { pos:i, sc, w:t };
+          }
+        }
+      }
+      if (best) cands.push({ drug:d, w:best.w, score:best.sc, pos:best.pos });
+    }
+    if (cands.length) {
+      const minPos = Math.min.apply(null, cands.map(c => c.pos));
+      cands = cands.filter(c => c.pos === minPos);          // gần đầu dòng nhất = tên thuốc
+      const maxScore = Math.max.apply(null, cands.map(c => c.score));
+      cands = cands.filter(c => c.score === maxScore);      // khớp đủ chữ thắng khớp phần đầu
+      const maxLen = Math.max.apply(null, cands.map(c => c.w.length));
+      cands = cands.filter(c => c.w.length === maxLen);
+      // Nhiều thuốc cùng tên gốc khác hàm lượng (USALUKAST 5 vs 10): chỉ chọn khi con số
+      // trong tên cũng có trên dòng đó. Không suy đoán — sai hàm lượng là sai thuốc.
+      if (cands.length > 1) {
+        // Phân biệt hàm lượng CHỈ bằng con số đứng ngay sau tên ("usalukast 5", "acetylcys 200mg").
+        // Cố tình KHÔNG nhận số ở bất kỳ đâu trên dòng: các cột S.Lượng / Đơn giá / Thành tiền
+        // cũng là số, và luật lỏng đó từng làm "Usalukas … Vien 10" chọn nhầm USALUKAST 10.
+        const after = [toks[minPos + 1] || '', toks[minPos + 2] || ''];
+        const glued = cands.filter(c => {
+          const cn = nums(rxNorm(c.drug.name));
+          return cn.length && after.some(t => t.startsWith(cn[0]));
+        });
+        if (glued.length === 1) cands = glued;
+      }
+      if (cands.length === 1) {
+        const d = cands[0].drug;
+        if (!added.has(d.name) && !seen.has(d.name)) {
+          seen.add(d.name);
+          sure.push({ drug:d, via:cands[0].w, partial:cands[0].score === 2 });
+        }
+      } else {
+        // Còn mơ hồ (ví dụ dòng "Tatanol Paracetamol" trúng nhiều sản phẩm tên PARACETAMOL…)
+        amb.push({ line, ing:cands[0].w, cands:cands.slice(0, 5), total:cands.length });
+      }
+      continue;
+    }
+    // 2) chỉ khớp hoạt chất → mơ hồ, để người chọn
+    const ingCands = [];
+    for (const d of UD.drugs) {
+      for (const w of rxNorm(d.ing).split(' ')) {
+        // >=7 ký tự và phải là cả từ (chặn hai đầu) — đủ chặt để không trúng chữ trong bảng.
+        if (w.length >= 7 && !GENERIC_ING.has(w) && pad.includes(' ' + w + ' ')) { ingCands.push({ drug:d, w }); break; }
+      }
+    }
+    if (ingCands.length) amb.push({ line, ing:ingCands[0].w, cands:ingCands.slice(0, 5), total:ingCands.length });
+  }
+  return { sure, amb };
+}
+// Dán ảnh từ bộ nhớ đệm. Dùng sự kiện paste (không cần quyền) thay vì
+// navigator.clipboard.read() — API đó đòi secure context nên trên file:// sẽ chặn.
+document.addEventListener('paste', e => {
+  if (S.tab !== 'rx' || !e.clipboardData) return;
+  for (const it of e.clipboardData.items) {
+    if (it.type && it.type.startsWith('image/')) { rxSetImage(it.getAsFile()); e.preventDefault(); return; }
+  }
+});
+
+const RX_STOP = new Set(['dưới', 'dạng', 'tương', 'đương', 'với', 'vừa', 'đủ', 'viên', 'gói',
+  'hoạt', 'chất', 'chứa', 'mỗi', 'trong', 'hoặc']);
+// Tách tên hoạt chất thành từ khoá để so trùng: bỏ ngoặc, bỏ số và đơn vị.
+function ingTokens(s) {
+  return [...new Set(String(s || '').toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[0-9]+([.,][0-9]+)*\s*(mg|mcg|g|ml|ui|iu|cfu|%)?/g, ' ')
+    .split(/[^a-zà-ỹ]+/)
+    .filter(w => w.length >= 5 && !RX_STOP.has(w)))];
+}
+function rxDupes() {
+  const out = [];
+  const items = S.rxItems.filter(x => x.drug);
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const a = ingTokens(items[i].drug.ing), b = ingTokens(items[j].drug.ing);
+      const shared = a.filter(t => b.includes(t));
+      if (shared.length) out.push({ a: items[i].drug.name, b: items[j].drug.name, shared });
+    }
+  }
+  return out;
+}
+
+// Dò tương tác giữa các thuốc trong đơn: khớp cặp hoạt chất đã khai ở tab Tương tác với
+// ô "Hoạt chất" của từng thuốc. Khớp CẢ TỪ và giữ nguyên dấu — cùng lý do như phần OCR.
+function rxInteractions() {
+  const items = S.rxItems.filter(x => x.drug);
+  if (!UD.inters.length || items.length < 2) return [];
+  const hay = items.map(x => ({ item:x, txt: ' ' + rxNorm(x.drug.ing + ' ' + x.drug.name) + ' ' }));
+  const has = (h, term) => {
+    const t = rxNorm(term).trim();
+    return t.length >= 3 && h.txt.includes(' ' + t + ' ');
+  };
+  const out = [], seen = new Set();
+  for (const r of UD.inters) {
+    if (!r.a || !r.b) continue;
+    for (const x of hay) for (const y of hay) {
+      if (x === y) continue;
+      if (!has(x, r.a) || !has(y, r.b)) continue;
+      const k = [x.item.id, y.item.id].sort().join('|') + '|' + r.id;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ rule:r, d1:x.item.drug, d2:y.item.drug });
+    }
+  }
+  const rank = {'Chống chỉ định':0, 'Nghiêm trọng':1, 'Trung bình':2, 'Nhẹ':3};
+  return out.sort((p, q) => (rank[p.rule.sev] ?? 9) - (rank[q.rule.sev] ?? 9));
+}
+const sevCls = s => ({'Chống chỉ định':'sev-cc', 'Nghiêm trọng':'sev-ng',
+  'Trung bình':'sev-tb', 'Nhẹ':'sev-nh'}[s] || 'sev-nh');
+
+// Cảnh báo tương tác phải KHÔNG THỂ BỎ LỠ: ngoài khung inline còn bật hộp thoại chặn ngang,
+// bắt bấm xác nhận. Chỉ bật lại khi tập tương tác đổi (thêm/bớt thuốc), không bật mỗi lần render.
+function interSig(list) {
+  return list.map(t => [t.d1.name, t.d2.name, t.rule.id].join('~')).sort().join('|');
+}
+function openInterAlert(list) {
+  close();
+  const worst = list.some(t => t.rule.sev === 'Chống chỉ định') ? 'Chống chỉ định'
+    : list.some(t => t.rule.sev === 'Nghiêm trọng') ? 'Nghiêm trọng' : (list[0].rule.sev || '');
+  const lvl = s => ({'Trung bình':' lvl-tb', 'Nhẹ':' lvl-nh'}[s] || '');
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov'},
+    el('div', {cls:'alertmodal', id:'md'},
+      el('div', {cls:'alerthd'}, el('span', {cls:'big'}, '⚠️'),
+        el('span', {},
+          el('h2', {}, 'Đơn này có ' + list.length + ' tương tác thuốc'),
+          el('div', {cls:'sub2'}, worst ? 'Mức cao nhất: ' + worst : 'Kiểm tra trước khi cấp phát'))),
+      el('div', {cls:'alertbody'}, list.map(t => el('div', {cls:'alertpair' + lvl(t.rule.sev)},
+        el('span', {cls:'sevtag ' + sevCls(t.rule.sev)}, t.rule.sev || 'chưa rõ mức'),
+        el('div', {cls:'who'}, t.d1.name + '   +   ' + t.d2.name),
+        el('div', {cls:'ing'}, t.rule.a + '  ✕  ' + t.rule.b),
+        t.rule.effect ? el('div', {cls:'ln'}, 'Hậu quả: ' + t.rule.effect) : null,
+        t.rule.action ? el('div', {cls:'ln'}, 'Xử trí: ' + t.rule.action) : null))),
+      el('div', {cls:'alertfoot'},
+        el('span', {style:'font-size:12px;color:var(--ink3)'}, 'Chi tiết vẫn hiện ở cột phải sau khi đóng.'),
+        el('button', {cls:'btn', style:'margin-left:auto', onclick:close}, 'Đã xem')))));
+}
+
+function renderRx(m) {
+  m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '🩺'),
+    el('span', {}, el('h1', {}, 'Kiểm tra đơn thuốc'),
+      el('div', {cls:'sub'}, 'đối chiếu với ' + UD.drugs.length + ' thuốc trong Danh mục')),
+    S.rxItems.length ? el('button', {cls:'btn ghost', onclick:() => { S.rxItems = []; renderMain(); }}, 'Xoá đơn') : null));
+
+  if (!UD.drugs.length) m.appendChild(el('div', {cls:'warnbox miss'},
+    el('b', {}, 'Danh mục đang trống'),
+    'Sang tab Danh mục bấm “Nạp từ Excel” để có dữ liệu thuốc, nếu không tab này không đối chiếu được gì.'));
+
+  // ── cột trái: ảnh đơn ──
+  const left = el('div', {}), right = el('div', {});
+  if (!S.rxImg) {
+    const drop = el('div', {cls:'drop', tabindex:'0',
+      onclick:() => {
+        const inp = el('input', {type:'file', accept:'image/*', style:'display:none'});
+        inp.addEventListener('change', () => { if (inp.files[0]) rxSetImage(inp.files[0]); inp.remove(); });
+        document.body.appendChild(inp); inp.click();
+      },
+      ondragover:e => { e.preventDefault(); drop.classList.add('over'); },
+      ondragleave:() => drop.classList.remove('over'),
+      ondrop:e => { e.preventDefault(); drop.classList.remove('over'); rxSetImage(e.dataTransfer.files[0]); }},
+      el('div', {cls:'big'}, '📷'),
+      el('div', {cls:'t'}, 'Dán ảnh bằng Ctrl+V (⌘V)'),
+      el('div', {cls:'s'}, 'hoặc bấm để chọn file từ máy, hoặc kéo–thả ảnh vào đây'));
+    left.appendChild(drop);
+  } else {
+    const img = el('img', {cls:'rximg' + (S.rxZoom ? ' z' : ''), src:S.rxImg, alt:'Ảnh đơn thuốc',
+      onclick:() => { S.rxZoom = !S.rxZoom; renderMain(); }});
+    left.appendChild(el('div', {cls:'card'},
+      el('div', {cls:'hd'}, 'Ảnh đơn thuốc',
+        el('span', {cls:'tag'}, S.rxZoom ? 'phóng to — bấm để thu nhỏ' : 'bấm vào ảnh để phóng to'),
+        el('span', {style:'margin-left:auto'},
+          el('button', {cls:'btn ghost sm', onclick:() => { S.rxImg = null; S.rxZoom = false; S.rxText = ''; renderMain(); }}, 'Đổi ảnh'))),
+      el('div', {cls:'bd'},
+        el('div', {cls:'tbar', style:'margin-bottom:9px'},
+          el('button', {cls:'btn', disabled:S.rxBusy || undefined, onclick:rxRunOcr},
+            S.rxBusy ? 'Đang quét…' : (S.rxText ? '↻ Quét lại' : '🔍 Quét tên thuốc từ ảnh')),
+          el('span', {id:'ocrState', style:'font-size:12px;color:var(--ink3)'}, S.rxOcrState || '')),
+        el('div', {cls:'rxscroll'}, img))));
+
+    if (S.rxText) {
+      const sc = rxScan();
+      left.appendChild(el('div', {cls:'card'},
+        el('div', {cls:'hd'}, 'Chữ OCR đọc được',
+          el('span', {cls:'tag'}, 'chỉ dùng để nhận tên — số liệu không lấy từ đây')),
+        el('div', {cls:'bd'}, el('div', {cls:'note', style:'font-family:var(--mono);font-size:11.5px;max-height:170px;overflow:auto;white-space:pre-wrap'}, S.rxText))));
+
+      if (!UD.drugs.length) {
+        right.appendChild(el('div', {cls:'warnbox miss'},
+          el('b', {}, 'Danh mục đang trống nên không đối chiếu được'),
+          'OCR đã đọc xong ảnh, nhưng chưa có thuốc nào để so. Sang tab Danh mục → Nạp từ Excel, ' +
+          'rồi quay lại bấm “Quét lại”.'));
+      } else if (S.rxAuto) {
+        right.appendChild(el('div', {cls:'warnbox ok'},
+          el('b', {}, '✓ Đã tự thêm ' + S.rxAuto + ' thuốc khớp tên vào đơn'),
+          'Thông tin lấy từ Danh mục, xem bên dưới. Nếu có thuốc nào nhận sai thì bấm “Bỏ”.'
+          + (S.rxPartial ? ' Có ' + S.rxPartial + ' thuốc chỉ khớp được phần đầu tên (do phần mềm cắt cụt cột) — đã đánh dấu, soát kỹ.' : '')));
+      } else if (sc.sure.length === 0 && !sc.amb.length) {
+        right.appendChild(el('div', {cls:'warnbox miss'},
+          el('b', {}, 'Không nhận ra tên thuốc nào trong ảnh'),
+          'Kiểm tra lại ảnh (chữ quá nhỏ / mờ?), hoặc tự tìm bằng ô dưới.'));
+      }
+
+      if (sc.amb.length) right.appendChild(el('div', {cls:'card'},
+        el('div', {cls:'hd'}, 'Chỉ khớp hoạt chất — cần bạn chọn', el('span', {cls:'tag'}, sc.amb.length)),
+        el('div', {cls:'bd'},
+          el('div', {cls:'note', style:'margin-bottom:8px'},
+            'Những dòng này có hoạt chất trùng Danh mục nhưng tên biệt dược thì không có, nên không tự thêm được — nhiều sản phẩm cùng hoạt chất, chọn sai là sai thuốc.'),
+          sc.amb.map(a => el('div', {cls:'ambrow', style:'padding:9px 11px'},
+            el('div', {style:'font-size:12.5px;font-weight:650;margin-bottom:5px'},
+              'Dòng đọc được: “' + a.line + '” → hoạt chất ' + a.ing + ' (' + a.total + ' sản phẩm trong Danh mục)'),
+            el('div', {cls:'hits', style:'margin-top:0'}, a.cands.map(cd =>
+              el('button', {cls:'hit', onclick:() => { S.rxItems.push({ id:uid(), drug:cd.drug }); renderMain(); }},
+                el('div', {cls:'hn'}, cd.drug.name), el('div', {cls:'hi'}, cd.drug.ing || '—')))))))));
+    }
+  }
+
+  // ── cột phải: thêm thuốc + kết quả ──
+  const q = (S.rxq || '').toLowerCase().trim();
+  const hits = q ? UD.drugs.filter(d =>
+    ((d.name || '') + ' ' + (d.ing || '')).toLowerCase().includes(q)).slice(0, 30) : [];
+  const add = drug => { S.rxItems.push({ id:uid(), drug }); S.rxq = ''; renderMain(); };
+
+  right.appendChild(el('div', {cls:'card'},
+    el('div', {cls:'hd'}, 'Đọc tên thuốc trên ảnh rồi thêm vào đây'),
+    el('div', {cls:'bd'},
+      el('input', {type:'search', id:'rxq', placeholder:'Nhập tên thuốc hoặc hoạt chất trong đơn…',
+        value:S.rxq || '', style:'width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg)',
+        oninput:e => { S.rxq = e.target.value; renderMain(); const n = document.getElementById('rxq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }}),
+      q && hits.length ? el('div', {cls:'hits'}, hits.map(d =>
+        el('button', {cls:'hit', onclick:() => add(d)},
+          el('div', {cls:'hn'}, d.name), el('div', {cls:'hi'}, d.ing || '—')))) : null,
+      q && !hits.length ? el('div', {cls:'note', style:'margin-top:8px'},
+        'Không có thuốc nào khớp “' + S.rxq + '” trong Danh mục. ',
+        el('button', {cls:'btn ghost sm', style:'margin-left:6px', onclick:() => {
+          S.rxItems.push({ id:uid(), drug:null, raw:S.rxq }); S.rxq = ''; renderMain();
+        }}, 'Vẫn thêm vào đơn (ngoài danh mục)')) : null)));
+
+  if (S.rxItems.length) {
+    // cảnh báo tự động
+    const dup = rxDupes(), miss = S.rxItems.filter(x => !x.drug), inters = rxInteractions();
+    const warns = el('div', {});
+    inters.forEach(t => warns.appendChild(el('div', {cls:'warnbox dup'},
+      el('b', {}, el('span', {cls:'sevtag ' + sevCls(t.rule.sev)}, t.rule.sev || 'chưa rõ mức'),
+        '  Tương tác: ' + t.rule.a + ' ✕ ' + t.rule.b),
+      el('div', {cls:'v'}, t.d1.name + '  +  ' + t.d2.name
+        + (t.rule.effect ? '\n' + t.rule.effect : '')
+        + (t.rule.action ? '\nXử trí: ' + t.rule.action : '')))));
+    dup.forEach(d => warns.appendChild(el('div', {cls:'warnbox dup'},
+      el('b', {}, '⚠ Trùng hoạt chất: ' + d.shared.join(', ')),
+      d.a + '  +  ' + d.b + ' — kiểm tra nguy cơ quá liều do cộng dồn cùng một hoạt chất.')));
+    if (miss.length) warns.appendChild(el('div', {cls:'warnbox miss'},
+      el('b', {}, '⚠ ' + miss.length + ' thuốc không có trong Danh mục'),
+      miss.map(x => x.raw).join(' · ') + ' — chưa đối chiếu được, cần tra tờ HDSD riêng.'));
+    // bật hộp thoại khi tập tương tác thay đổi
+    const sig = interSig(inters);
+    if (inters.length && sig !== S.rxAck) { S.rxAck = sig; setTimeout(() => openInterAlert(inters), 0); }
+    if (!inters.length) S.rxAck = '';
+    if (!dup.length && !miss.length && !inters.length) warns.appendChild(el('div', {cls:'warnbox ok'},
+      el('b', {}, '✓ Không phát hiện trùng hoạt chất hay tương tác'),
+      'Cả ' + S.rxItems.length + ' thuốc đều có trong Danh mục.'
+      + (UD.inters.length ? ' Đã đối chiếu ' + UD.inters.length + ' cặp tương tác đã khai.'
+         : ' Chưa khai cặp tương tác nào ở tab Tương tác nên chưa dò được phần này.')));
+    right.appendChild(warns);
+
+    right.appendChild(el('div', {cls:'card'},
+      el('div', {cls:'hd'}, 'Thuốc trong đơn', el('span', {cls:'tag'}, S.rxItems.length)),
+      el('div', {cls:'bd'}, S.rxItems.map((x, i) => {
+        const open = !!S.exp['rx' + x.id];
+        const d = x.drug;
+        return el('div', {cls:'rxrow' + (d ? '' : ' miss') + (open ? ' open' : '')},
+          el('div', {cls:'rxhead', onclick:() => { S.exp['rx' + x.id] = !open; renderMain(); }},
+            el('span', {cls:'n'}, String(i + 1)),
+            el('span', {cls:'grow'},
+              el('div', {cls:'inm'}, d ? d.name : x.raw),
+              el('div', {cls:'iing'}, (d ? (d.ing || '—') : 'không có trong Danh mục')
+                + (x.auto ? (x.partial ? '   ·  ⚠ khớp PHẦN ĐẦU tên — kiểm lại' : '   ·  nhận từ ảnh') : ''))),
+            el('span', {cls:'iact'},
+              el('button', {cls:'btn danger sm', onclick:e => {
+                e.stopPropagation();
+                S.rxItems = S.rxItems.filter(y => y.id !== x.id); renderMain();
+              }}, 'Bỏ'))),
+          open && d ? el('div', {cls:'ibody'}, DRUG_FIELDS.filter(f => f.k !== 'name' && d[f.k])
+            .map(f => el('div', {cls:'kv'}, el('span', {cls:'k'}, f.label), el('span', {cls:'v'}, d[f.k])))) : null);
+      }))));
+  }
+
+  m.appendChild(el('div', {cls:'rxwrap'}, left, right));
+}
+
+// ── quiz ────────────────────────────────────────────
+let Q = null;
+function openQuiz(d) {
+  const bank = quizFor(d.id);
+  Q = {bank, i:0, picked:null, right:0, done:false, name:d.name};
+  close();
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov', onclick:e => e.target.id === 'ov' && close()},
+    el('div', {cls:'modal', id:'md'})));
+  drawQuiz();
+}
+function drawQuiz() {
+  const box = document.getElementById('md'); if (!box) return;
+  box.textContent = '';
+  box.appendChild(el('button', {cls:'x', onclick:close}, '✕'));
+  const q = Q.bank[Q.i];
+
+  if (Q.done) {
+    const pct = Math.round(Q.right / Q.bank.length * 100);
+    box.appendChild(el('div', {cls:'score'},
+      el('div', {cls:'big'}, Q.right + '/' + Q.bank.length),
+      el('div', {cls:'lbl'}, 'Đúng ' + pct + '% · ' + Q.name)));
+    box.appendChild(el('div', {cls:'qnav'},
+      el('button', {cls:'go', onclick:() => { Q.i = 0; Q.right = 0; Q.picked = null; Q.done = false; drawQuiz(); }}, 'Làm lại'),
+      el('button', {cls:'opt', style:'width:auto;margin:0', onclick:close}, 'Đóng')));
+    return;
+  }
+
+  const opts = q.opts || ['Đúng', 'Sai'];
+  const ansIdx = q.type === 'tf' ? (q.ans === true ? 0 : 1) : q.ans;
+  box.appendChild(el('div', {cls:'qprog'}, 'Câu ' + (Q.i + 1) + '/' + Q.bank.length + ' · ' + q.cat + ' · ' + (q.type === 'tf' ? 'đúng/sai' : 'chọn 1') + ' · đúng ' + Q.right));
+  box.appendChild(el('div', {cls:'qbar'}, el('i', {style:'width:' + ((Q.i) / Q.bank.length * 100) + '%'})));
+  box.appendChild(el('div', {cls:'qq'}, (q.icon ? q.icon + ' ' : '') + q.q));
+
+  opts.forEach((o, i) => {
+    let cls = 'opt';
+    if (Q.picked != null) {
+      if (i === ansIdx) cls += ' right';
+      else if (i === Q.picked) cls += ' wrong';
+    }
+    box.appendChild(el('button', {cls, disabled: Q.picked != null, onclick:() => {
+      Q.picked = i; if (i === ansIdx) Q.right++; drawQuiz();
+    }}, o));
+  });
+
+  if (Q.picked != null) {
+    box.appendChild(el('div', {cls:'exp'}, el('b', {}, Q.picked === ansIdx ? '✓ Chính xác' : '✗ Chưa đúng'), q.exp));
+    box.appendChild(el('div', {cls:'qnav'}, el('button', {cls:'go', onclick:() => {
+      if (Q.i + 1 >= Q.bank.length) Q.done = true; else { Q.i++; Q.picked = null; }
+      drawQuiz();
+    }}, Q.i + 1 >= Q.bank.length ? 'Xem kết quả' : 'Câu tiếp →')));
+  }
+}
+
+// ── about ───────────────────────────────────────────
+document.getElementById('btnAbout').onclick = () => {
+  close();
+  const nQ = Object.values(QUIZ).reduce((a, b) => a + b.length, 0);
+  document.body.appendChild(el('div', {cls:'scrim', id:'ov', onclick:e => e.target.id === 'ov' && close()},
+    el('div', {cls:'modal', id:'md'},
+      el('button', {cls:'x', onclick:close}, '✕'),
+      el('h2', {style:'font-size:17px;margin-bottom:12px'}, 'Về bản dữ liệu'),
+      el('div', {style:'font-size:13.5px;line-height:1.7'},
+        el('div', {}, 'Dữ liệu: ' + DIS.length + ' bệnh · ' + Object.keys(PHARM).length + ' hoạt chất · ' + nQ + ' câu hỏi.'),
+        el('div', {}, 'Phiên bản dữ liệu gốc: ' + META.version + ' — cập nhật ' + META.updated),
+        el('div', {style:'margin-top:10px;font-weight:600'}, 'Tài liệu tham chiếu (theo nguồn):'),
+        el('ul', {style:'margin-left:18px'}, META.refs.map(r => el('li', {}, r))),
+        el('div', {style:'margin-top:12px;padding:10px 12px;background:var(--high-bg);border-radius:8px;color:#7a4c06;font-size:12.5px'},
+          'Nội dung thuộc bản quyền giaidapduoc.vn. Bản xem này chỉ để tra cứu cá nhân offline, không thay thế phán đoán lâm sàng.')))));
+};
+
+// ── init ────────────────────────────────────────────
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab'); if (!b) return;
+  if (b.dataset.tab !== S.tab) S.sel = {};   // không để lựa chọn rớt sang danh sách khác
+  S.tab = b.dataset.tab;
+  renderMain(); document.getElementById('main').scrollTop = 0;
+});
+document.getElementById('btnIndex').onclick = () => {
+  S.page = S.page === 'index' ? 'disease' : 'index';
+  renderMain(); document.getElementById('main').scrollTop = 0;
+};
+document.getElementById('ver').textContent = 'dữ liệu v' + META.version + ' · ' + META.updated;
+document.getElementById('q').addEventListener('input', e => { S.q = e.target.value; renderSide(); });
+udLoad();
+renderSide();
+renderMain();
+</script>
+</body>
+</html>

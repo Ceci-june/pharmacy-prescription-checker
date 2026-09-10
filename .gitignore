@@ -1,0 +1,29 @@
+# ─── Nội dung của bên thứ ba — KHÔNG đưa lên repo công khai ────────────────
+# Dữ liệu tra cứu OTC thuộc bản quyền giaidapduoc.vn, và 191 tờ hướng dẫn sử
+# dụng thuộc các hãng dược. Repo này chỉ chứa mã nguồn; người dùng tự cung cấp
+# dữ liệu của mình rồi chạy pipeline để build.
+Danh mục Tờ hướng dẫn/
+crawled-data/*.json
+crawled-data/csv/
+crawled-data/_raw-page-snapshot.html.gz
+danh-muc-import.xlsx
+ICD_10.xlsx
+
+# ─── File build (sinh ra từ mã nguồn + dữ liệu) ───────────────────────────
+otc-viewer.html
+OTC-Tool.exe
+GiaiDapDuoc-Windows.zip
+GiaiDapDuocApp/dist/
+GiaiDapDuocApp/bin/
+GiaiDapDuocApp/resources/index.html
+crawled-data/scripts/ocr-assets.js
+
+# ─── Riêng tư / rác ───────────────────────────────────────────────────────
+cv-project.md
+cv-project-en.md
+tin-nhan-gui-tac-gia.md
+node_modules/
+.DS_Store
+
+# Tài liệu nội bộ (mô tả nguồn dữ liệu) — không public
+crawled-data/README.md

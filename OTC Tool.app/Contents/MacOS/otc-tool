@@ -1,0 +1,27 @@
+#!/bin/sh
+# Mở otc-viewer.html trong một cửa sổ app riêng (không tab, không thanh địa chỉ).
+#
+# Cố tình KHÔNG dùng --user-data-dir: giữ nguyên profile mặc định của trình duyệt để
+# localStorage (Danh mục + Thông tư) vẫn là dữ liệu bạn đã nhập khi mở bằng tab thường.
+
+BUNDLE=$(cd "$(dirname "$0")/../.." && pwd)
+HTML="$(cd "$(dirname "$BUNDLE")" && pwd)/otc-viewer.html"
+
+if [ ! -f "$HTML" ]; then
+  osascript -e 'display alert "Không tìm thấy otc-viewer.html" message "File phải nằm cùng thư mục với OTC Tool.app." as critical'
+  exit 1
+fi
+
+for BROWSER in \
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  "$HOME/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+  "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+do
+  if [ -x "$BROWSER" ]; then
+    exec "$BROWSER" --app="file://$HTML" --window-size=1440,900
+  fi
+done
+
+# Không có Edge/Chrome thì mở bằng trình duyệt mặc định (sẽ là tab thường).
+open "$HTML"

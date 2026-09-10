@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Viên nang nghiêng + dấu tick = tra cứu thuốc & kiểm tra đơn.
+    Hình học: viên nang là rect 290×140 bo tròn hết cạnh (rx = h/2), tâm (240,255),
+    xoay -45°. Vạch chia và nửa tối đều vẽ trong CÙNG hệ toạ độ đã xoay và bám đúng
+    biên rect, nên không thò ra ngoài như bản trước.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#15745f"/>
+      <stop offset="1" stop-color="#0c4a3e"/>
+    </linearGradient>
+    <clipPath id="capsule">
+      <rect x="95" y="185" width="290" height="140" rx="70" transform="rotate(-45 240 255)"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
+
+  <g transform="rotate(-45 240 255)">
+    <!-- thân viên nang -->
+    <rect x="95" y="185" width="290" height="140" rx="70" fill="#F5EFE0"/>
+    <!-- nửa dưới rỗng: tô lại bằng màu nền, cắt theo đúng thân -->
+    <g clip-path="url(#capsule)" transform="rotate(45 240 255)">
+      <g transform="rotate(-45 240 255)">
+        <rect x="240" y="185" width="145" height="140" fill="#0c4a3e"/>
+      </g>
+    </g>
+    <!-- viền + vạch chia, bám đúng biên -->
+    <rect x="95" y="185" width="290" height="140" rx="70" fill="none" stroke="#F5EFE0" stroke-width="22"/>
+    <line x1="240" y1="185" x2="240" y2="325" stroke="#F5EFE0" stroke-width="22"/>
+  </g>
+
+  <!-- huy hiệu tick ở góc dưới phải -->
+  <circle cx="372" cy="372" r="100" fill="#0c4a3e"/>
+  <circle cx="372" cy="372" r="86" fill="#F5EFE0"/>
+  <path d="M330 374 L360 404 L416 342" fill="none" stroke="#0c4a3e"
+        stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
