@@ -174,6 +174,18 @@ header .tab.on{background:rgba(255,255,255,.2);opacity:1}
 .sev-tb{background:var(--high-bg);color:var(--high)}
 .sev-nh{background:var(--med-bg);color:var(--med)}
 
+/* ── Sub-tab (bộ mã y khoa) ─────────────────────────── */
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.subtab{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);
+  border-radius:20px;padding:6px 13px;font-size:12.8px;font-weight:600;color:var(--ink2)}
+.subtab:hover{border-color:var(--accent);color:var(--accent)}
+.subtab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.subtab .cnt{font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:20px;
+  background:var(--accent-soft);color:var(--accent)}
+.subtab.on .cnt{background:rgba(255,255,255,.22);color:#fff}
+.subtab .cnt.zero{background:var(--line);color:var(--ink3)}
+.subtab.on .cnt.zero{background:rgba(255,255,255,.18);color:rgba(255,255,255,.75)}
+
 /* ── ICD 10 ─────────────────────────────────────────── */
 .icdrow{display:flex;gap:12px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer}
 .icdrow:last-child{border-bottom:none}
@@ -288,7 +300,7 @@ textarea.fi{resize:vertical;line-height:1.55}
       <button class="tab on" data-tab="otc">OTC Data</button>
       <button class="tab" data-tab="catalog">Danh mục</button>
       <button class="tab" data-tab="rx">Kiểm tra đơn</button>
-      <button class="tab" data-tab="icd">ICD 10</button>
+      <button class="tab" data-tab="icd">Tra cứu mã</button>
       <button class="tab" data-tab="inter">Tương tác</button>
       <button class="tab" data-tab="circular">Thông tư</button>
     </span>
@@ -348,25 +360,31 @@ const ALIAS = {liver:'suygan',kidney:'suythan',cvd:'htn',bf:'bfeed'};
 // Bank quiz "dyspepsia" thực chất thuộc bệnh indigestion (app gốc tra theo id nên bỏ sót).
 const QUIZ_ALIAS = {indigestion:'dyspepsia'};
 
-let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, rxAck:'', exp:{}, sel:{},
+let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', rxAck:'', exp:{}, sel:{},
   rxImg:null, rxItems:[], rxq:'', rxZoom:false};
 
 // ── Dữ liệu người dùng tự nhập (Danh mục + Thông tư) ──────────────────
 // Lưu ở localStorage. Trên file:// mọi trang dùng chung origin nên key phải riêng biệt;
 // và vì xoá dữ liệu duyệt web là mất, luôn có nút Xuất Excel để sao lưu thật.
 const LSKEY = 'gdd.userdata.v1';
-let UD = {drugs:[], circulars:[], inters:[], icd:[]}, lsOK = true;
+let UD = {drugs:[], circulars:[], inters:[], codes:{}}, lsOK = true;
 function udLoad() {
   try {
     const raw = localStorage.getItem(LSKEY);
     if (raw) {
       const o = JSON.parse(raw) || {};
       UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
-      // Lần đầu chưa có gì thì nạp sẵn 336 mã nhúng sẵn; sau đó danh sách này do người dùng
-      // toàn quyền sửa. Mảng rỗng vẫn là "đã có" nên xoá hết rồi mở lại không bị nạp lại.
-      UD.icd = o.icd ? o.icd : ICD.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' }));
-    } else {
-      UD.icd = ICD.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' }));
+      UD.codes = o.codes || {};
+      // Bản cũ lưu ICD ở UD.icd — chuyển sang UD.codes.icd, giữ nguyên mọi sửa đổi.
+      if (!UD.codes.icd && o.icd) UD.codes.icd = o.icd;
+    }
+    for (const c of CODE_SETS) {
+      // Lần đầu chưa có gì thì ICD nạp sẵn từ dữ liệu build; 4 bộ kia bắt đầu rỗng.
+      // Mảng rỗng vẫn tính là "đã có" nên xoá hết rồi mở lại không bị nạp lại.
+      if (!UD.codes[c.key]) {
+        UD.codes[c.key] = c.key === 'icd'
+          ? ICD.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' })) : [];
+      }
     }
   } catch (e) { lsOK = false; return; }
   // Bản cũ tách "Liều dùng" và "Độ tuổi áp dụng" thành 2 trường — nối lại thành 1.
@@ -420,16 +438,37 @@ const ICD_FIELDS = [
   {k:'dx',   label:'Chẩn đoán', req:true, area:true, alias:['Tên chẩn đoán', 'Chẩn đoán ICD']},
   {k:'note', label:'Ghi chú', area:true},
 ];
+// 5 bộ mã y khoa. Cùng hình dạng (mã + tên + ghi chú) nên dùng chung một bộ máy CRUD,
+// chỉ khác nhãn và sheet Excel. ICD được nạp sẵn từ dữ liệu build; 4 bộ còn lại để người
+// dùng tự nạp vì bản build không kèm dữ liệu của chúng.
+const CODE_SETS = [
+  {key:'icd',    tab:'ICD-10',             label:'mã ICD-10',  nameLabel:'Chẩn đoán',        sheet:'ICD 10'},
+  {key:'yhct',   tab:'YHCT',               label:'mã YHCT',    nameLabel:'Tên bệnh/chứng',   sheet:'YHCT'},
+  {key:'pl3',    tab:'PL3 Thuốc/Hóa chất', label:'mã PL3',     nameLabel:'Tên thuốc/hóa chất', sheet:'PL3'},
+  {key:'snomed', tab:'SNOMED CT',          label:'mã SNOMED',  nameLabel:'Thuật ngữ',        sheet:'SNOMED CT'},
+  {key:'loinc',  tab:'LOINC',              label:'mã LOINC',   nameLabel:'Tên xét nghiệm',   sheet:'LOINC'},
+];
+const codeSet = k => CODE_SETS.find(c => c.key === k) || CODE_SETS[0];
+const codeFields = c => [
+  {k:'code', label:'Mã', req:true, alias:['Mã ' + c.tab, 'Mã ICD', 'Code']},
+  {k:'dx',   label:c.nameLabel, req:true, area:true, alias:['Chẩn đoán', 'Tên', 'Tên chẩn đoán', 'Mô tả']},
+  {k:'note', label:'Ghi chú', area:true},
+];
+
 const KIND = {
   drug:     {fields:DRUG_FIELDS, list:() => UD.drugs,     label:'thuốc',    what:'Thuốc'},
-  icd:      {fields:ICD_FIELDS,  list:() => UD.icd,       label:'mã ICD',   what:'ICD 10',
-             title:x => (x.code || '?') + ' — ' + (x.dx || ''),
-             valid:o => o.code && o.dx},
   circular: {fields:CIRC_FIELDS, list:() => UD.circulars, label:'thông tư', what:'Thông tư'},
   inter:    {fields:INTER_FIELDS, list:() => UD.inters,   label:'cặp tương tác', what:'Tương tác',
              title:x => (x.a || '?') + '  ✕  ' + (x.b || '?'),
              valid:o => o.a && o.b},
 };
+for (const c of CODE_SETS) {
+  KIND['code_' + c.key] = {
+    fields: codeFields(c), list: () => UD.codes[c.key], label: c.label, what: c.tab,
+    title: x => (x.code || '?') + ' — ' + (x.dx || ''),
+    valid: o => o.code && o.dx,
+  };
+}
 const titleOf = (kind, x) => (KIND[kind].title ? KIND[kind].title(x) : (x.name || '(chưa có tên)'));
 
 const el = (t,a,...c) => {
@@ -548,70 +587,85 @@ function renderIndex(m) {
 // Danh mục chẩn đoán chỉ đọc, nhúng sẵn từ ICD_10.xlsx. Bấm một mã để xem
 // thuốc nào trong Danh mục có mã đó ở ô "ICD khuyến nghị".
 function renderIcd(m) {
+  const c = codeSet(S.codeSet || 'icd');
+  const kind = 'code_' + c.key;
+  const list = UD.codes[c.key] || [];
   const q = rxNorm(S.iq || '').trim();
-  const hit = !q ? UD.icd : UD.icd.filter(r =>
+  const hit = !q ? list : list.filter(r =>
     rxNorm(r.code).includes(q) || rxNorm(r.dx).includes(q) || rxNorm(r.note || '').includes(q));
 
   m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '🏷️'),
-    el('span', {}, el('h1', {}, 'Danh mục ICD 10'),
-      el('div', {cls:'sub'}, UD.icd.length + ' mã chẩn đoán'
-        + (q ? ' · khớp ' + hit.length : '') + ' · tra theo mã hoặc tên chẩn đoán'))));
+    el('span', {}, el('h1', {}, 'Tra cứu mã y khoa'),
+      el('div', {cls:'sub'}, CODE_SETS.map(x => x.tab + ' ' + (UD.codes[x.key] || []).length).join(' · ')))));
+
+  // thanh bộ mã
+  m.appendChild(el('div', {cls:'subtabs'}, CODE_SETS.map(x =>
+    el('button', {cls:'subtab' + (x.key === c.key ? ' on' : ''),
+      onclick:() => { S.codeSet = x.key; S.iq = ''; S.sel = {}; renderMain(); }},
+      x.tab, el('span', {cls:'cnt' + ((UD.codes[x.key] || []).length ? '' : ' zero')},
+        (UD.codes[x.key] || []).length)))));
 
   if (!lsOK) m.appendChild(el('div', {cls:'warnbox miss'},
     el('b', {}, 'Trình duyệt không cho lưu cục bộ'), 'Sửa đổi chỉ tồn tại tới khi đóng tab — hãy Xuất Excel.'));
 
   m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
     el('div', {cls:'tbar'},
-      el('input', {type:'search', placeholder:'Nhập mã (J06) hoặc tên chẩn đoán (viêm họng)…', value:S.iq || '',
+      el('input', {type:'search', placeholder:'Tìm trong ' + c.tab + ' — theo mã hoặc tên…', value:S.iq || '',
         oninput:e => { S.iq = e.target.value; renderMain();
           const n = m.querySelector('input[type=search]');
           if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }}),
-      el('button', {cls:'btn', onclick:() => openForm('icd')}, '+ Thêm mã ICD'),
+      el('button', {cls:'btn', onclick:() => openForm(kind)}, '+ Thêm ' + c.label),
       el('button', {cls:'btn ghost', onclick:udExport, title:'Tải về .xlsx gồm mọi sheet'}, 'Xuất Excel'),
       el('button', {cls:'btn ghost', onclick:pickImport}, 'Nạp từ Excel'),
-      el('button', {cls:'btn ghost', title:'Nạp lại 336 mã đi kèm bản build',
+      c.key === 'icd' ? el('button', {cls:'btn ghost', title:'Nạp lại ' + ICD.length + ' mã đi kèm bản build',
         onclick:() => {
-          const add = ICD.filter(r => !UD.icd.some(x => x.code === r.code && x.dx === r.dx));
-          if (!add.length) { alert('Danh sách đã có đủ 336 mã gốc.'); return; }
+          const add = ICD.filter(r => !list.some(x => x.code === r.code && x.dx === r.dx));
+          if (!add.length) { alert('Danh sách đã có đủ ' + ICD.length + ' mã gốc.'); return; }
           if (!confirm('Thêm lại ' + add.length + ' mã gốc còn thiếu?\nCác mã bạn tự thêm/sửa vẫn giữ nguyên.')) return;
-          UD.icd = UD.icd.concat(add.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' })));
+          UD.codes.icd = list.concat(add.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' })));
           udSave(); renderMain();
-        }}, 'Khôi phục mã gốc')),
-    hit.length ? selBar('icd', hit) : null)));
+        }}, 'Khôi phục mã gốc') : null),
+    hit.length ? selBar(kind, hit) : null)));
 
   if (!hit.length) {
-    m.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'}, UD.icd.length
+    m.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'}, list.length
       ? 'Không mã nào khớp “' + S.iq + '”.'
-      : 'Danh sách đang trống. Bấm “+ Thêm mã ICD”, hoặc “Khôi phục mã gốc” để lấy lại 336 mã.')));
+      : 'Chưa có dữ liệu ' + c.tab + '.\nBấm “+ Thêm ' + c.label + '”, hoặc “Nạp từ Excel”'
+        + ' với sheet tên “' + c.sheet + '” (hai cột: Mã, ' + c.nameLabel + ').'
+        + (c.key === 'icd' ? '\nHoặc bấm “Khôi phục mã gốc”.' : ''))));
     return;
   }
 
-  const box = el('div', {cls:'card'}, el('div', {cls:'hd'}, 'Mã chẩn đoán',
-    el('span', {cls:'tag'}, hit.length + '/' + UD.icd.length)));
+  const box = el('div', {cls:'card'}, el('div', {cls:'hd'}, c.tab,
+    el('span', {cls:'tag'}, hit.length + '/' + list.length)));
   const body = el('div', {});
   for (const r of hit) {
-    const open = S.exp['icd' + r.id];
+    const open = S.exp['code' + r.id];
     const ck = el('input', {type:'checkbox', cls:'ck', title:'Chọn để xoá nhiều'});
     ck.checked = !!S.sel[r.id];
     ck.addEventListener('click', e => e.stopPropagation());
     ck.addEventListener('change', () => { if (ck.checked) S.sel[r.id] = true; else delete S.sel[r.id]; renderMain(); });
     body.appendChild(el('div', {cls:'icdrow' + (open ? ' on' : ''),
-      onclick:() => { S.exp['icd' + r.id] = !open; renderMain(); }},
+      onclick:() => { S.exp['code' + r.id] = !open; renderMain(); }},
       ck,
       el('span', {cls:'code'}, r.code),
       el('span', {cls:'dx'}, r.dx, r.note ? el('div', {style:'font-size:11.5px;color:var(--ink3);margin-top:2px'}, r.note) : null),
       el('span', {cls:'iact'},
-        el('button', {cls:'btn ghost sm', onclick:e => { e.stopPropagation(); openForm('icd', r); }}, 'Sửa'),
-        el('button', {cls:'btn danger sm', onclick:e => { e.stopPropagation(); delItem('icd', r); }}, 'Xoá'))));
+        el('button', {cls:'btn ghost sm', onclick:e => { e.stopPropagation(); openForm(kind, r); }}, 'Sửa'),
+        el('button', {cls:'btn danger sm', onclick:e => { e.stopPropagation(); delItem(kind, r); }}, 'Xoá'))));
     if (open) {
-      const ds = UD.drugs.filter(d => rxNorm(d.icd || '').includes(rxNorm(r.code)));
+      // Chỉ ICD mới nối với ô "ICD khuyến nghị" của Danh mục thuốc.
+      const ds = c.key === 'icd'
+        ? UD.drugs.filter(d => rxNorm(d.icd || '').includes(rxNorm(r.code))) : [];
       body.appendChild(el('div', {cls:'icdsub'},
-        ds.length
-          ? [el('div', {style:'font-weight:650;margin-bottom:4px'}, 'Thuốc trong Danh mục gợi ý mã này (' + ds.length + '):'),
-             ds.map(d => el('div', {cls:'d'}, d.name + '  —  ' + (d.ing || '')))]
-          : el('div', {style:'color:var(--ink3)'}, UD.drugs.length
-              ? 'Chưa thuốc nào trong Danh mục ghi mã này ở ô “ICD khuyến nghị”.'
-              : 'Danh mục đang trống — nạp file Excel ở tab Danh mục để đối chiếu.')));
+        c.key !== 'icd'
+          ? el('div', {style:'color:var(--ink3)'}, 'Mã ' + c.tab + '. Phần đối chiếu với Danh mục thuốc hiện chỉ áp dụng cho ICD-10.')
+          : ds.length
+            ? [el('div', {style:'font-weight:650;margin-bottom:4px'}, 'Thuốc trong Danh mục gợi ý mã này (' + ds.length + '):'),
+               ds.map(d => el('div', {cls:'d'}, d.name + '  —  ' + (d.ing || '')))]
+            : el('div', {style:'color:var(--ink3)'}, UD.drugs.length
+                ? 'Chưa thuốc nào trong Danh mục ghi mã này ở ô “ICD khuyến nghị”.'
+                : 'Danh mục đang trống — nạp file Excel ở tab Danh mục để đối chiếu.')));
     }
   }
   box.appendChild(body);
@@ -811,15 +865,17 @@ function delSelected(kind) {
 
 // ── Excel ───────────────────────────────────────────
 // Tiêu đề cột = nhãn trường, để file xuất ra sửa trong Excel rồi nhập lại được ngay.
-const SHEET = {drug:'Danh mục', circular:'Thông tư', inter:'Tương tác', icd:'ICD 10'};
+const SHEET = {drug:'Danh mục', circular:'Thông tư', inter:'Tương tác'};
+CODE_SETS.forEach(c => { SHEET['code_' + c.key] = c.sheet; });
 const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
 
 function udExport() {
-  if (!UD.drugs.length && !UD.circulars.length && !UD.inters.length && !UD.icd.length) {
+  if (!UD.drugs.length && !UD.circulars.length && !UD.inters.length
+      && !CODE_SETS.some(c => (UD.codes[c.key] || []).length)) {
     alert('Chưa có dữ liệu để xuất.'); return;
   }
   const wb = XLSX.utils.book_new();
-  for (const kind of ['drug', 'circular', 'inter', 'icd']) {
+  for (const kind of ['drug', 'circular', 'inter'].concat(CODE_SETS.map(c => 'code_' + c.key))) {
     const K = KIND[kind];
     const rows = K.list().map(x => {
       const r = {};
@@ -862,7 +918,10 @@ function kindOfSheet(name, headers) {
   const n = norm(name), h = headers.map(norm);
   if (n === norm(SHEET.drug) || h.includes('hoạt chất')) return 'drug';
   if (n === norm(SHEET.inter) || (h.includes('hoạt chất a') && h.includes('hoạt chất b'))) return 'inter';
-  if (n === norm(SHEET.icd) || h.includes('mã icd')) return 'icd';
+  // Nhận sheet bộ mã theo TÊN SHEET. Không đoán theo cột vì cả 5 bộ cùng hình dạng
+  // (Mã + tên + ghi chú) — đoán sẽ đổ nhầm LOINC vào ICD.
+  for (const c of CODE_SETS) if (n === norm(c.sheet) || n === norm(c.tab)) return 'code_' + c.key;
+  if (h.includes('mã icd')) return 'code_icd';
   if (n === norm(SHEET.circular) || h.includes('nội dung')) return 'circular';
   return null;
 }
@@ -897,7 +956,8 @@ function applyWorkbook(u8) {
     let wb;
     try { wb = XLSX.read(u8, {type:'array'}); }
     catch (e) { alert('File không phải Excel hợp lệ.\n\n' + e.message); return; }
-    const found = {drug:[], circular:[], inter:[], icd:[]}, skipped = [];
+    const found = {drug:[], circular:[], inter:[]}, skipped = [];
+    CODE_SETS.forEach(c => { found['code_' + c.key] = []; });
     for (const name of wb.SheetNames) {
       const ws = wb.Sheets[name];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
@@ -906,15 +966,19 @@ function applyWorkbook(u8) {
       if (!kind) { skipped.push(name); continue; }
       found[kind] = found[kind].concat(rowsToItems(kind, rows));
     }
-    const nd = found.drug.length, nc = found.circular.length, ni = found.inter.length, nx = found.icd.length;
+    const nd = found.drug.length, nc = found.circular.length, ni = found.inter.length;
+    const codeHits = CODE_SETS.map(c => ({ c, n: found['code_' + c.key].length })).filter(x => x.n);
+    const nx = codeHits.reduce((a, x) => a + x.n, 0);
     if (!nd && !nc && !ni && !nx) {
-      alert('Không tìm thấy dòng nào dùng được.\n\nCần sheet tên “Danh mục” / “Thông tư” / “Tương tác”, '
-        + 'hoặc có cột “Hoạt chất” / “Nội dung” / “Hoạt chất A”+“Hoạt chất B”, '
-        + 'và cột tên tương ứng không để trống.'
+      alert('Không tìm thấy dòng nào dùng được.\n\nCần sheet tên “Danh mục” / “Thông tư” / “Tương tác”'
+        + ' / “' + CODE_SETS.map(c => c.sheet).join('” / “') + '”,'
+        + ' và cột tên tương ứng không để trống.'
         + (skipped.length ? '\n\nĐã bỏ qua sheet: ' + skipped.join(', ') : ''));
       return;
     }
-    const msg = 'Đọc được ' + nd + ' thuốc, ' + nc + ' thông tư, ' + ni + ' cặp tương tác và ' + nx + ' mã ICD từ Excel.'
+    const msg = 'Đọc được ' + nd + ' thuốc, ' + nc + ' thông tư, ' + ni + ' cặp tương tác'
+      + (codeHits.length ? ' và ' + codeHits.map(x => x.n + ' ' + x.c.tab).join(', ') : ' và 0 mã')
+      + ' từ Excel.'
       + (skipped.length ? '\n(Bỏ qua sheet: ' + skipped.join(', ') + ')' : '')
       + '\n\nOK = THÊM vào dữ liệu hiện có (' + UD.drugs.length + ' thuốc, ' + UD.circulars.length
       + ' thông tư, ' + UD.inters.length + ' cặp tương tác).'
@@ -923,7 +987,9 @@ function applyWorkbook(u8) {
     if (nd) UD.drugs = found.drug.concat(UD.drugs);
     if (nc) UD.circulars = found.circular.concat(UD.circulars);
     if (ni) UD.inters = found.inter.concat(UD.inters);
-    if (nx) UD.icd = found.icd.concat(UD.icd);
+    codeHits.forEach(x => {
+      UD.codes[x.c.key] = found['code_' + x.c.key].concat(UD.codes[x.c.key] || []);
+    });
     udSave(); renderMain();
   }
 }
