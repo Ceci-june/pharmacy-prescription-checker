@@ -174,6 +174,25 @@ header .tab.on{background:rgba(255,255,255,.2);opacity:1}
 .sev-tb{background:var(--high-bg);color:var(--high)}
 .sev-nh{background:var(--med-bg);color:var(--med)}
 
+/* ── Ô thống kê + duyệt theo chương ─────────────────── */
+.stats{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px}
+.stat{border:1px solid var(--line);background:var(--panel);border-radius:11px;padding:9px 15px;text-align:left;min-width:96px}
+.stat:hover{border-color:var(--accent)}
+.stat.on{border-color:var(--accent);background:var(--accent-soft)}
+.stat.flat{cursor:default}
+.stat .n{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+.stat.on .n{color:var(--accent)}
+.stat .l{font-size:11px;color:var(--ink3);margin-top:1px}
+
+.chaps{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:7px}
+.chap{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:8px 11px;text-align:left}
+.chap:hover{border-color:var(--accent)}
+.chap.on{border-color:var(--accent);background:var(--accent-soft)}
+.chap .rn{flex:0 0 42px;font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--accent)}
+.chap .nm{flex:1;min-width:0;font-size:12.5px;line-height:1.4}
+.chap .rg{font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-top:1px}
+.chap .cnt{flex:0 0 auto;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:20px;background:var(--accent-soft);color:var(--accent)}
+
 /* ── Sub-tab (bộ mã y khoa) ─────────────────────────── */
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .subtab{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);
@@ -360,7 +379,7 @@ const ALIAS = {liver:'suygan',kidney:'suythan',cvd:'htn',bf:'bfeed'};
 // Bank quiz "dyspepsia" thực chất thuộc bệnh indigestion (app gốc tra theo id nên bỏ sót).
 const QUIZ_ALIAS = {indigestion:'dyspepsia'};
 
-let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', rxAck:'', exp:{}, sel:{},
+let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', icdChap:'', icdStat:'', rxAck:'', exp:{}, sel:{},
   rxImg:null, rxItems:[], rxq:'', rxZoom:false};
 
 // ── Dữ liệu người dùng tự nhập (Danh mục + Thông tư) ──────────────────
@@ -450,10 +469,43 @@ const CODE_SETS = [
 ];
 const codeSet = k => CODE_SETS.find(c => c.key === k) || CODE_SETS[0];
 const codeFields = c => [
-  {k:'code', label:'Mã', req:true, alias:['Mã ' + c.tab, 'Mã ICD', 'Code']},
-  {k:'dx',   label:c.nameLabel, req:true, area:true, alias:['Chẩn đoán', 'Tên', 'Tên chẩn đoán', 'Mô tả']},
-  {k:'note', label:'Ghi chú', area:true},
+  {k:'code',   label:'Mã', req:true, alias:['Mã ' + c.tab, 'Mã ICD', 'Code']},
+  {k:'dx',     label:c.nameLabel, req:true, area:true, alias:['Chẩn đoán', 'Tên', 'Tên chẩn đoán', 'Mô tả']},
+  {k:'status', label:'Trạng thái', alias:['Tình trạng', 'Ghi chú mã hóa', 'Cảnh báo']},
+  {k:'note',   label:'Ghi chú', area:true},
 ];
+
+// 22 chương ICD-10. Suy ra từ ký tự đầu + 2 chữ số nên không cần cột chương trong dữ liệu.
+const ICD_CHAPTERS = [
+  ['I','Bệnh truyền nhiễm và ký sinh trùng','A00','B99'],
+  ['II','U tân sinh','C00','D48'],
+  ['III','Bệnh máu, cơ quan tạo máu và rối loạn cơ chế miễn dịch','D50','D89'],
+  ['IV','Bệnh nội tiết, dinh dưỡng và chuyển hóa','E00','E90'],
+  ['V','Rối loạn tâm thần và hành vi','F00','F99'],
+  ['VI','Bệnh hệ thần kinh','G00','G99'],
+  ['VII','Bệnh của mắt và cấu trúc phụ cận','H00','H59'],
+  ['VIII','Bệnh của tai và xương chũm','H60','H95'],
+  ['IX','Bệnh hệ tuần hoàn','I00','I99'],
+  ['X','Bệnh hệ hô hấp','J00','J99'],
+  ['XI','Bệnh hệ tiêu hóa','K00','K93'],
+  ['XII','Bệnh của da và mô dưới da','L00','L99'],
+  ['XIII','Bệnh hệ cơ xương khớp và mô liên kết','M00','M99'],
+  ['XIV','Bệnh hệ sinh dục, tiết niệu','N00','N99'],
+  ['XV','Thai kỳ, sinh đẻ và thời kỳ sau đẻ','O00','O99'],
+  ['XVI','Bệnh lý xuất phát trong thời kỳ chu sinh','P00','P96'],
+  ['XVII','Dị tật, biến dạng và bất thường nhiễm sắc thể bẩm sinh','Q00','Q99'],
+  ['XVIII','Triệu chứng, dấu hiệu và bất thường lâm sàng, cận lâm sàng','R00','R99'],
+  ['XIX','Tổn thương, ngộ độc và hậu quả do nguyên nhân bên ngoài','S00','T98'],
+  ['XX','Nguyên nhân bên ngoài của bệnh tật và tử vong','V01','Y98'],
+  ['XXI','Yếu tố liên quan tình trạng sức khỏe và tiếp cận dịch vụ y tế','Z00','Z99'],
+  ['XXII','Mã phục vụ mục đích đặc biệt','U00','U85'],
+];
+const codeKey = c => { const m = String(c || '').trim().toUpperCase().match(/^([A-Z])(\d{2})/); return m ? m[1] + m[2] : null; };
+function chapterOf(code) {
+  const k = codeKey(code);
+  if (!k) return null;
+  return ICD_CHAPTERS.find(([, , lo, hi]) => k >= lo && k <= hi) || null;
+}
 
 const KIND = {
   drug:     {fields:DRUG_FIELDS, list:() => UD.drugs,     label:'thuốc',    what:'Thuốc'},
@@ -591,19 +643,33 @@ function renderIcd(m) {
   const kind = 'code_' + c.key;
   const list = UD.codes[c.key] || [];
   const q = rxNorm(S.iq || '').trim();
-  const hit = !q ? list : list.filter(r =>
+  let hit = !q ? list : list.filter(r =>
     rxNorm(r.code).includes(q) || rxNorm(r.dx).includes(q) || rxNorm(r.note || '').includes(q));
+  if (S.icdChap) hit = hit.filter(r => { const ch = chapterOf(r.code); return ch && ch[0] === S.icdChap; });
+  if (S.icdStat) hit = hit.filter(r => (r.status || '') === S.icdStat);
 
   m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '🏷️'),
     el('span', {}, el('h1', {}, 'Tra cứu mã y khoa'),
-      el('div', {cls:'sub'}, CODE_SETS.map(x => x.tab + ' ' + (UD.codes[x.key] || []).length).join(' · ')))));
+      el('div', {cls:'sub'}, 'Tra mã bệnh, mã thuốc/hóa chất, thuật ngữ và xét nghiệm'))));
+
+  // dãy ô thống kê — đếm sống từ dữ liệu đang có
+  const nRevoked = (UD.codes.icd || []).filter(r => /hủy|huỷ|thu hồi|revok/i.test(r.status || '')).length;
+  m.appendChild(el('div', {cls:'stats'},
+    CODE_SETS.map(x => el('button', {cls:'stat' + (x.key === c.key ? ' on' : ''),
+      onclick:() => { S.codeSet = x.key; S.iq = ''; S.icdChap = ''; S.icdStat = ''; S.sel = {}; renderMain(); }},
+      el('div', {cls:'n'}, (UD.codes[x.key] || []).length.toLocaleString('vi-VN')),
+      el('div', {cls:'l'}, x.tab))),
+    el('div', {cls:'stat flat'}, el('div', {cls:'n'}, nRevoked.toLocaleString('vi-VN')),
+      el('div', {cls:'l'}, 'Mã bị hủy'))));
 
   // thanh bộ mã
-  m.appendChild(el('div', {cls:'subtabs'}, CODE_SETS.map(x =>
-    el('button', {cls:'subtab' + (x.key === c.key ? ' on' : ''),
-      onclick:() => { S.codeSet = x.key; S.iq = ''; S.sel = {}; renderMain(); }},
-      x.tab, el('span', {cls:'cnt' + ((UD.codes[x.key] || []).length ? '' : ' zero')},
-        (UD.codes[x.key] || []).length)))));
+  m.appendChild(el('div', {cls:'subtabs'},
+    el('span', {style:'font-size:12.5px;font-weight:700;color:var(--ink2);align-self:center;margin-right:2px'}, 'Thuật ngữ'),
+    CODE_SETS.map(x =>
+      el('button', {cls:'subtab' + (x.key === c.key ? ' on' : ''),
+        onclick:() => { S.codeSet = x.key; S.iq = ''; S.icdChap = ''; S.icdStat = ''; S.sel = {}; renderMain(); }},
+        x.tab, el('span', {cls:'cnt' + ((UD.codes[x.key] || []).length ? '' : ' zero')},
+          (UD.codes[x.key] || []).length)))));
 
   if (!lsOK) m.appendChild(el('div', {cls:'warnbox miss'},
     el('b', {}, 'Trình duyệt không cho lưu cục bộ'), 'Sửa đổi chỉ tồn tại tới khi đóng tab — hãy Xuất Excel.'));
@@ -626,6 +692,36 @@ function renderIcd(m) {
           udSave(); renderMain();
         }}, 'Khôi phục mã gốc') : null),
     hit.length ? selBar(kind, hit) : null)));
+
+  // Chip trạng thái — chỉ dựng từ giá trị CÓ THẬT trong dữ liệu, không bịa danh sách cứng,
+  // để khỏi hiện bộ lọc rỗng khi file nạp vào không có cột Trạng thái.
+  const stats = [...new Set(list.map(r => (r.status || '').trim()).filter(Boolean))].sort();
+  if (stats.length) {
+    m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'}, el('div', {cls:'chips'},
+      el('button', {cls:'chip' + (S.icdStat ? '' : ' on'),
+        onclick:() => { S.icdStat = ''; renderMain(); }}, 'Tất cả ' + list.length),
+      stats.map(st => el('button', {cls:'chip' + (S.icdStat === st ? ' on' : ''),
+        onclick:() => { S.icdStat = S.icdStat === st ? '' : st; renderMain(); }},
+        st + ' ' + list.filter(r => (r.status || '') === st).length))))));
+  }
+
+  // Duyệt theo chương — chỉ ICD-10, và chỉ hiện chương thực sự có mã.
+  if (c.key === 'icd') {
+    const counts = {};
+    for (const r of list) { const ch = chapterOf(r.code); if (ch) counts[ch[0]] = (counts[ch[0]] || 0) + 1; }
+    const shown = ICD_CHAPTERS.filter(ch => counts[ch[0]]);
+    if (shown.length) m.appendChild(el('div', {cls:'card'},
+      el('div', {cls:'hd'}, '📚 Duyệt theo chương',
+        el('span', {cls:'tag'}, shown.length + '/' + ICD_CHAPTERS.length + ' chương có mã'),
+        S.icdChap ? el('span', {style:'margin-left:auto'},
+          el('button', {cls:'btn ghost sm', onclick:() => { S.icdChap = ''; renderMain(); }}, 'Bỏ lọc chương')) : null),
+      el('div', {cls:'bd'}, el('div', {cls:'chaps'}, shown.map(ch =>
+        el('button', {cls:'chap' + (S.icdChap === ch[0] ? ' on' : ''),
+          onclick:() => { S.icdChap = S.icdChap === ch[0] ? '' : ch[0]; renderMain(); }},
+          el('span', {cls:'rn'}, ch[0]),
+          el('span', {cls:'nm'}, ch[1], el('div', {cls:'rg'}, ch[2] + '–' + ch[3])),
+          el('span', {cls:'cnt'}, counts[ch[0]])))))));
+  }
 
   if (!hit.length) {
     m.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'}, list.length
