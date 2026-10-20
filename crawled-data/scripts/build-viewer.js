@@ -16,6 +16,8 @@ const data = {
   meta: load('data_meta'),
   quiz: load('quiz_bank_map'),
   icd10: load('icd10'),      // ICD_10.xlsx → icd-to-json.js
+  yhct: load('yhct'),        // danh mục YHCT → yhoc-to-json.js
+  pl3: load('pl3'),          // PL3 thuốc/hóa chất gây ngộ độc → yhoc-to-json.js
 };
 
 // `</script>` and the U+2028/9 line separators would break the inline script tag.
@@ -62,3 +64,4 @@ const kb = (fs.statSync(OUT).size / 1024 / 1024).toFixed(2);
 console.log(`${path.basename(OUT)} — ${kb} MB`);
 console.log(`  ${data.diseases.length} bệnh · ${Object.keys(data.pharm).length} hoạt chất · ` +
   `${Object.values(data.quiz).reduce((a, b) => a + b.length, 0)} câu hỏi`);
+console.log(`  mã: ${data.icd10.length} ICD-10 · ${data.yhct.length} YHCT · ${data.pl3.length} PL3`);

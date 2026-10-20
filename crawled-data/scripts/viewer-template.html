@@ -216,6 +216,13 @@ header .tab.on{background:rgba(255,255,255,.2);opacity:1}
 .icdsub{padding:2px 10px 12px 104px;border-bottom:1px solid var(--line);font-size:12.5px}
 .icdsub .d{padding:4px 0;border-bottom:1px dashed var(--line)}
 .icdsub .d:last-child{border-bottom:none}
+/* Cột riêng của từng bộ mã (YHCT: ICD tương ứng/tên hiện đại; PL3: 4 mã theo ý định). */
+.exgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 14px}
+.exgrid .ex{min-width:0}
+.exgrid .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)}
+.exgrid .v{font-size:12.5px;line-height:1.45;word-break:break-word}
+/* Mã PL3 ngắn và luôn dạng chữ+số -> để font mono cho dễ đối chiếu từng ký tự. */
+.exgrid .v.mono{font-family:var(--mono);font-weight:650;color:var(--accent)}
 
 /* ── CRUD: thanh công cụ, danh sách, form ──────────── */
 .tbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -351,7 +358,10 @@ if (!DB) {
     + '  crawled-data/scripts/viewer-template.html otc-viewer.html</pre></div>';
   throw new Error('viewer-template.html chưa được build');
 }
-const {diseases:DIS, pharm:PHARM, drugSafety:SAFE, inters:INTERS, symFilter:SF, meta:META, quiz:QUIZ, icd10:ICD} = DB;
+const {diseases:DIS, pharm:PHARM, drugSafety:SAFE, inters:INTERS, symFilter:SF, meta:META, quiz:QUIZ,
+       icd10:ICD, yhct:YHCT, pl3:PL3} = DB;
+// Dữ liệu gốc của từng bộ mã, dùng cho cả lần nạp đầu lẫn nút “Khôi phục mã gốc”.
+const CODE_SEED = {icd:ICD || [], yhct:YHCT || [], pl3:PL3 || []};
 
 // 11 nhóm bệnh nhân, nhãn lấy từ getGroups() của app gốc.
 const GROUPS = [
@@ -386,24 +396,29 @@ let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:''
 // Lưu ở localStorage. Trên file:// mọi trang dùng chung origin nên key phải riêng biệt;
 // và vì xoá dữ liệu duyệt web là mất, luôn có nút Xuất Excel để sao lưu thật.
 const LSKEY = 'gdd.userdata.v1';
-let UD = {drugs:[], circulars:[], inters:[], codes:{}}, lsOK = true;
+let UD = {drugs:[], circulars:[], inters:[], codes:{}, seeded:[]}, lsOK = true;
+// Dựng bản ghi của một bộ mã từ dữ liệu nhúng sẵn trong bản build.
+function seedCodes(key) {
+  return (CODE_SEED[key] || []).map(r => ({ ...r, id:uid() }));
+}
 function udLoad() {
   try {
     const raw = localStorage.getItem(LSKEY);
+    const o = raw ? (JSON.parse(raw) || {}) : {};
     if (raw) {
-      const o = JSON.parse(raw) || {};
       UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
       UD.codes = o.codes || {};
       // Bản cũ lưu ICD ở UD.icd — chuyển sang UD.codes.icd, giữ nguyên mọi sửa đổi.
       if (!UD.codes.icd && o.icd) UD.codes.icd = o.icd;
     }
+    // `seeded` ghi lại những bộ ĐÃ từng được nạp sẵn. Nhờ nó phân biệt được hai cảnh
+    // khác hẳn nhau mà cùng cho mảng rỗng: người dùng cố tình xoá sạch một bộ (phải
+    // để yên), và bản cũ lưu [] vì bản build khi đó chưa kèm dữ liệu bộ đó (phải nạp).
+    UD.seeded = Array.isArray(o.seeded) ? o.seeded.slice() : (o.codes ? ['icd'] : []);
     for (const c of CODE_SETS) {
-      // Lần đầu chưa có gì thì ICD nạp sẵn từ dữ liệu build; 4 bộ kia bắt đầu rỗng.
-      // Mảng rỗng vẫn tính là "đã có" nên xoá hết rồi mở lại không bị nạp lại.
-      if (!UD.codes[c.key]) {
-        UD.codes[c.key] = c.key === 'icd'
-          ? ICD.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' })) : [];
-      }
+      if (UD.codes[c.key] && (UD.codes[c.key].length || UD.seeded.includes(c.key))) continue;
+      UD.codes[c.key] = seedCodes(c.key);
+      if (!UD.seeded.includes(c.key)) UD.seeded.push(c.key);
     }
   } catch (e) { lsOK = false; return; }
   // Bản cũ tách "Liều dùng" và "Độ tuổi áp dụng" thành 2 trường — nối lại thành 1.
@@ -457,18 +472,33 @@ const ICD_FIELDS = [
   {k:'dx',   label:'Chẩn đoán', req:true, area:true, alias:['Tên chẩn đoán', 'Chẩn đoán ICD']},
   {k:'note', label:'Ghi chú', area:true},
 ];
-// 5 bộ mã y khoa. Cùng hình dạng (mã + tên + ghi chú) nên dùng chung một bộ máy CRUD,
-// chỉ khác nhãn và sheet Excel. ICD được nạp sẵn từ dữ liệu build; 4 bộ còn lại để người
-// dùng tự nạp vì bản build không kèm dữ liệu của chúng.
+// 3 bộ mã y khoa. Lõi giống nhau (mã + tên + trạng thái + ghi chú) nên dùng chung một
+// bộ máy CRUD; `extra` là các cột riêng của từng bộ, chèn ngay sau tên. Cả 3 bộ đều
+// được nạp sẵn từ dữ liệu build.
 const CODE_SETS = [
   {key:'icd',    tab:'ICD-10',             label:'mã ICD-10',  nameLabel:'Chẩn đoán',        sheet:'ICD 10'},
-  {key:'yhct',   tab:'YHCT',               label:'mã YHCT',    nameLabel:'Tên bệnh/chứng',   sheet:'YHCT'},
-  {key:'pl3',    tab:'PL3 Thuốc/Hóa chất', label:'mã PL3',     nameLabel:'Tên thuốc/hóa chất', sheet:'PL3'},
+  {key:'yhct',   tab:'YHCT',               label:'mã YHCT',    nameLabel:'Tên bệnh/chứng YHCT', sheet:'YHCT',
+   extra:[
+     {k:'icd10',   label:'Mã ICD-10 tương ứng', alias:['Mã ICD-10', 'Mã ICD']},
+     {k:'modern',  label:'Tên theo y học hiện đại', area:true, alias:['Tên hiện đại', 'Tên bệnh YHHĐ']},
+     {k:'billing', label:'Tên ghi khi thanh toán', area:true, alias:['Tên thanh toán']},
+   ]},
+  // PL3 = bảng tra thuốc/hóa chất gây ngộ độc. Mỗi chất ứng với nhiều mã ICD tùy ý định,
+  // nên cột Mã lấy mã ngộ độc (T) — mã chẩn đoán chính — và 4 mã còn lại nằm ở `extra`.
+  {key:'pl3',    tab:'PL3 Thuốc/Hóa chất', label:'mã PL3',     nameLabel:'Tên thuốc/hóa chất', sheet:'PL3',
+   codeLabel:'Mã ngộ độc (T)',
+   extra:[
+     {k:'acc',   label:'Tai nạn (X)',            alias:['Tai nạn']},
+     {k:'self',  label:'Tự gây hại (X)',         alias:['Tự tử', 'Tự gây hại']},
+     {k:'undet', label:'Không rõ ý định (Y)',    alias:['Không xác định ý định']},
+     {k:'adv',   label:'Phản ứng có hại khi dùng đúng liều (Y)', alias:['Tác dụng phụ', 'Phản ứng có hại']},
+   ]},
 ];
 const codeSet = k => CODE_SETS.find(c => c.key === k) || CODE_SETS[0];
 const codeFields = c => [
-  {k:'code',   label:'Mã', req:true, alias:['Mã ' + c.tab, 'Mã ICD', 'Code']},
+  {k:'code',   label:c.codeLabel || 'Mã', req:true, alias:['Mã ' + c.tab, 'Mã ICD', 'Mã', 'Code']},
   {k:'dx',     label:c.nameLabel, req:true, area:true, alias:['Chẩn đoán', 'Tên', 'Tên chẩn đoán', 'Mô tả']},
+  ...(c.extra || []),
   {k:'status', label:'Trạng thái', alias:['Tình trạng', 'Ghi chú mã hóa', 'Cảnh báo']},
   {k:'note',   label:'Ghi chú', area:true},
 ];
@@ -641,8 +671,11 @@ function renderIcd(m) {
   const kind = 'code_' + c.key;
   const list = UD.codes[c.key] || [];
   const q = rxNorm(S.iq || '').trim();
-  let hit = !q ? list : list.filter(r =>
-    rxNorm(r.code).includes(q) || rxNorm(r.dx).includes(q) || rxNorm(r.note || '').includes(q));
+  // Quét cả các cột riêng của bộ: tra YHCT bằng mã ICD-10 hay tên y học hiện đại,
+  // tra PL3 bằng bất kỳ mã nào trong 5 mã của chất đó.
+  const haystack = r => [r.code, r.dx, r.note, ...(c.extra || []).map(f => r[f.k])]
+    .filter(Boolean).join(' \u0001 ');
+  let hit = !q ? list : list.filter(r => rxNorm(haystack(r)).includes(q));
   if (S.icdChap) hit = hit.filter(r => { const ch = chapterOf(r.code); return ch && ch[0] === S.icdChap; });
   if (S.icdStat) hit = hit.filter(r => (r.status || '') === S.icdStat);
 
@@ -651,10 +684,12 @@ function renderIcd(m) {
       el('div', {cls:'sub'}, 'Tra mã bệnh ICD-10, mã YHCT và mã thuốc/hóa chất'))));
 
   // dãy ô thống kê — đếm sống từ dữ liệu đang có
-  const nRevoked = (UD.codes.icd || []).filter(r => /hủy|huỷ|thu hồi|revok/i.test(r.status || '')).length;
+  // Đếm trên CẢ 3 bộ: YHCT dùng chữ "Ngừng dùng", ICD dùng "hủy/thu hồi".
+  const nRevoked = CODE_SETS.reduce((n, x) => n + (UD.codes[x.key] || [])
+    .filter(r => /hủy|huỷ|thu hồi|ngừng dùng|revok|discontinu/i.test(r.status || '')).length, 0);
   m.appendChild(el('div', {cls:'stats'},
     CODE_SETS.map(x => el('button', {cls:'stat' + (x.key === c.key ? ' on' : ''),
-      onclick:() => { S.codeSet = x.key; S.iq = ''; S.icdChap = ''; S.icdStat = ''; S.sel = {}; renderMain(); }},
+      onclick:() => { S.codeSet = x.key; S.iq = ''; S.icdChap = ''; S.icdStat = ''; S.icdMax = 0; S.sel = {}; renderMain(); }},
       el('div', {cls:'n'}, (UD.codes[x.key] || []).length.toLocaleString('vi-VN')),
       el('div', {cls:'l'}, x.tab))),
     el('div', {cls:'stat flat'}, el('div', {cls:'n'}, nRevoked.toLocaleString('vi-VN')),
@@ -665,7 +700,7 @@ function renderIcd(m) {
     el('span', {style:'font-size:12.5px;font-weight:700;color:var(--ink2);align-self:center;margin-right:2px'}, 'Thuật ngữ'),
     CODE_SETS.map(x =>
       el('button', {cls:'subtab' + (x.key === c.key ? ' on' : ''),
-        onclick:() => { S.codeSet = x.key; S.iq = ''; S.icdChap = ''; S.icdStat = ''; S.sel = {}; renderMain(); }},
+        onclick:() => { S.codeSet = x.key; S.iq = ''; S.icdChap = ''; S.icdStat = ''; S.icdMax = 0; S.sel = {}; renderMain(); }},
         x.tab, el('span', {cls:'cnt' + ((UD.codes[x.key] || []).length ? '' : ' zero')},
           (UD.codes[x.key] || []).length)))));
 
@@ -675,18 +710,20 @@ function renderIcd(m) {
   m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
     el('div', {cls:'tbar'},
       el('input', {type:'search', placeholder:'Tìm trong ' + c.tab + ' — theo mã hoặc tên…', value:S.iq || '',
-        oninput:e => { S.iq = e.target.value; renderMain();
+        oninput:e => { S.iq = e.target.value; S.icdMax = 0; renderMain();
           const n = m.querySelector('input[type=search]');
           if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }}),
       el('button', {cls:'btn', onclick:() => openForm(kind)}, '+ Thêm ' + c.label),
       el('button', {cls:'btn ghost', onclick:udExport, title:'Tải về .xlsx gồm mọi sheet'}, 'Xuất Excel'),
       el('button', {cls:'btn ghost', onclick:pickImport}, 'Nạp từ Excel'),
-      c.key === 'icd' ? el('button', {cls:'btn ghost', title:'Nạp lại ' + ICD.length + ' mã đi kèm bản build',
+      (CODE_SEED[c.key] || []).length ? el('button', {cls:'btn ghost',
+        title:'Nạp lại ' + CODE_SEED[c.key].length + ' mã đi kèm bản build',
         onclick:() => {
-          const add = ICD.filter(r => !list.some(x => x.code === r.code && x.dx === r.dx));
-          if (!add.length) { alert('Danh sách đã có đủ ' + ICD.length + ' mã gốc.'); return; }
+          const seed = CODE_SEED[c.key];
+          const add = seed.filter(r => !list.some(x => x.code === r.code && x.dx === r.dx));
+          if (!add.length) { alert('Danh sách đã có đủ ' + seed.length + ' mã gốc.'); return; }
           if (!confirm('Thêm lại ' + add.length + ' mã gốc còn thiếu?\nCác mã bạn tự thêm/sửa vẫn giữ nguyên.')) return;
-          UD.codes.icd = list.concat(add.map(r => ({ id:uid(), code:r.code, dx:r.dx, note:'' })));
+          UD.codes[c.key] = list.concat(add.map(r => ({ ...r, id:uid() })));
           udSave(); renderMain();
         }}, 'Khôi phục mã gốc') : null),
     hit.length ? selBar(kind, hit) : null)));
@@ -697,9 +734,9 @@ function renderIcd(m) {
   if (stats.length) {
     m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'}, el('div', {cls:'chips'},
       el('button', {cls:'chip' + (S.icdStat ? '' : ' on'),
-        onclick:() => { S.icdStat = ''; renderMain(); }}, 'Tất cả ' + list.length),
+        onclick:() => { S.icdStat = ''; S.icdMax = 0; renderMain(); }}, 'Tất cả ' + list.length),
       stats.map(st => el('button', {cls:'chip' + (S.icdStat === st ? ' on' : ''),
-        onclick:() => { S.icdStat = S.icdStat === st ? '' : st; renderMain(); }},
+        onclick:() => { S.icdStat = S.icdStat === st ? '' : st; S.icdMax = 0; renderMain(); }},
         st + ' ' + list.filter(r => (r.status || '') === st).length))))));
   }
 
@@ -712,10 +749,10 @@ function renderIcd(m) {
       el('div', {cls:'hd'}, '📚 Duyệt theo chương',
         el('span', {cls:'tag'}, shown.length + '/' + ICD_CHAPTERS.length + ' chương có mã'),
         S.icdChap ? el('span', {style:'margin-left:auto'},
-          el('button', {cls:'btn ghost sm', onclick:() => { S.icdChap = ''; renderMain(); }}, 'Bỏ lọc chương')) : null),
+          el('button', {cls:'btn ghost sm', onclick:() => { S.icdChap = ''; S.icdMax = 0; renderMain(); }}, 'Bỏ lọc chương')) : null),
       el('div', {cls:'bd'}, el('div', {cls:'chaps'}, shown.map(ch =>
         el('button', {cls:'chap' + (S.icdChap === ch[0] ? ' on' : ''),
-          onclick:() => { S.icdChap = S.icdChap === ch[0] ? '' : ch[0]; renderMain(); }},
+          onclick:() => { S.icdChap = S.icdChap === ch[0] ? '' : ch[0]; S.icdMax = 0; renderMain(); }},
           el('span', {cls:'rn'}, ch[0]),
           el('span', {cls:'nm'}, ch[1], el('div', {cls:'rg'}, ch[2] + '–' + ch[3])),
           el('span', {cls:'cnt'}, counts[ch[0]])))))));
@@ -725,15 +762,24 @@ function renderIcd(m) {
     m.appendChild(el('div', {cls:'card'}, el('div', {cls:'empty2'}, list.length
       ? 'Không mã nào khớp “' + S.iq + '”.'
       : 'Chưa có dữ liệu ' + c.tab + '.\nBấm “+ Thêm ' + c.label + '”, hoặc “Nạp từ Excel”'
-        + ' với sheet tên “' + c.sheet + '” (hai cột: Mã, ' + c.nameLabel + ').'
-        + (c.key === 'icd' ? '\nHoặc bấm “Khôi phục mã gốc”.' : ''))));
+        + ' với sheet tên “' + c.sheet + '” (các cột: '
+        + codeFields(c).map(f => f.label).join(', ') + ').'
+        + ((CODE_SEED[c.key] || []).length ? '\nHoặc bấm “Khôi phục mã gốc”.' : ''))));
     return;
   }
 
+  // YHCT có hơn 4000 mã, PL3 hơn 3000. Dựng hết thành DOM thì mỗi lần gõ một ký tự
+  // phải vẽ lại hàng chục nghìn nút -> gõ bị giật. Chỉ vẽ một khúc, kèm nút xem thêm.
+  const PAGE = 300;
+  const cap = S.icdMax || PAGE;
+  const shown = hit.slice(0, cap);
+
   const box = el('div', {cls:'card'}, el('div', {cls:'hd'}, c.tab,
-    el('span', {cls:'tag'}, hit.length + '/' + list.length)));
+    el('span', {cls:'tag'}, hit.length + '/' + list.length),
+    hit.length > shown.length
+      ? el('span', {cls:'tag'}, 'đang hiện ' + shown.length) : null));
   const body = el('div', {});
-  for (const r of hit) {
+  for (const r of shown) {
     const open = S.exp['code' + r.id];
     const ck = el('input', {type:'checkbox', cls:'ck', title:'Chọn để xoá nhiều'});
     ck.checked = !!S.sel[r.id];
@@ -748,21 +794,39 @@ function renderIcd(m) {
         el('button', {cls:'btn ghost sm', onclick:e => { e.stopPropagation(); openForm(kind, r); }}, 'Sửa'),
         el('button', {cls:'btn danger sm', onclick:e => { e.stopPropagation(); delItem(kind, r); }}, 'Xoá'))));
     if (open) {
-      // Chỉ ICD mới nối với ô "ICD khuyến nghị" của Danh mục thuốc.
-      const ds = c.key === 'icd'
-        ? UD.drugs.filter(d => rxNorm(d.icd || '').includes(rxNorm(r.code))) : [];
+      // Mã ICD-10 để đối chiếu với ô "ICD khuyến nghị" của Danh mục thuốc: với ICD-10 là
+      // chính mã đó, với YHCT là mã ICD-10 tương ứng mà Bộ Y tế ghi kèm. PL3 không có.
+      const icdRef = c.key === 'icd' ? r.code : c.key === 'yhct' ? r.icd10 : '';
+      const ds = icdRef
+        ? UD.drugs.filter(d => rxNorm(d.icd || '').includes(rxNorm(icdRef))) : [];
+      // Các cột riêng của bộ — chỉ hiện ô nào có dữ liệu, khỏi bày hàng loạt ô trống.
+      const ex = (c.extra || []).filter(f => String(r[f.k] || '').trim());
       body.appendChild(el('div', {cls:'icdsub'},
-        c.key !== 'icd'
-          ? el('div', {style:'color:var(--ink3)'}, 'Mã ' + c.tab + '. Phần đối chiếu với Danh mục thuốc hiện chỉ áp dụng cho ICD-10.')
-          : ds.length
-            ? [el('div', {style:'font-weight:650;margin-bottom:4px'}, 'Thuốc trong Danh mục gợi ý mã này (' + ds.length + '):'),
+        ex.length ? el('div', {cls:'exgrid'}, ex.map(f =>
+          el('div', {cls:'ex'}, el('div', {cls:'k'}, f.label),
+            el('div', {cls:'v' + (/^[A-Z]\d{2}(\.\d+)?$/i.test(String(r[f.k]).trim()) ? ' mono' : '')},
+              r[f.k])))) : null,
+        icdRef
+          ? (ds.length
+            ? [el('div', {style:'font-weight:650;margin:6px 0 4px'},
+                 'Thuốc trong Danh mục gợi ý mã ' + icdRef + ' (' + ds.length + '):'),
                ds.map(d => el('div', {cls:'d'}, d.name + '  —  ' + (d.ing || '')))]
-            : el('div', {style:'color:var(--ink3)'}, UD.drugs.length
-                ? 'Chưa thuốc nào trong Danh mục ghi mã này ở ô “ICD khuyến nghị”.'
-                : 'Danh mục đang trống — nạp file Excel ở tab Danh mục để đối chiếu.')));
+            : el('div', {style:'color:var(--ink3);margin-top:6px'}, UD.drugs.length
+                ? 'Chưa thuốc nào trong Danh mục ghi mã ' + icdRef + ' ở ô “ICD khuyến nghị”.'
+                : 'Danh mục đang trống — nạp file Excel ở tab Danh mục để đối chiếu.'))
+          : (ex.length ? null : el('div', {style:'color:var(--ink3)'}, 'Không có thông tin kèm theo.'))));
     }
   }
   box.appendChild(body);
+  if (hit.length > shown.length) {
+    const left = hit.length - shown.length;
+    box.appendChild(el('div', {cls:'bd', style:'text-align:center'},
+      el('button', {cls:'btn ghost',
+        onclick:() => { S.icdMax = cap + PAGE; renderMain(); }},
+        'Hiện thêm ' + Math.min(PAGE, left) + ' mã'),
+      el('div', {style:'font-size:11.5px;color:var(--ink3);margin-top:6px'},
+        'Còn ' + left.toLocaleString('vi-VN') + ' mã chưa hiện — gõ vào ô tìm kiếm để thu hẹp.')));
+  }
   m.appendChild(box);
 }
 
