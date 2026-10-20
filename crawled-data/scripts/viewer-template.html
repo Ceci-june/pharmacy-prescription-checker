@@ -464,8 +464,6 @@ const CODE_SETS = [
   {key:'icd',    tab:'ICD-10',             label:'mã ICD-10',  nameLabel:'Chẩn đoán',        sheet:'ICD 10'},
   {key:'yhct',   tab:'YHCT',               label:'mã YHCT',    nameLabel:'Tên bệnh/chứng',   sheet:'YHCT'},
   {key:'pl3',    tab:'PL3 Thuốc/Hóa chất', label:'mã PL3',     nameLabel:'Tên thuốc/hóa chất', sheet:'PL3'},
-  {key:'snomed', tab:'SNOMED CT',          label:'mã SNOMED',  nameLabel:'Thuật ngữ',        sheet:'SNOMED CT'},
-  {key:'loinc',  tab:'LOINC',              label:'mã LOINC',   nameLabel:'Tên xét nghiệm',   sheet:'LOINC'},
 ];
 const codeSet = k => CODE_SETS.find(c => c.key === k) || CODE_SETS[0];
 const codeFields = c => [
@@ -650,7 +648,7 @@ function renderIcd(m) {
 
   m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '🏷️'),
     el('span', {}, el('h1', {}, 'Tra cứu mã y khoa'),
-      el('div', {cls:'sub'}, 'Tra mã bệnh, mã thuốc/hóa chất, thuật ngữ và xét nghiệm'))));
+      el('div', {cls:'sub'}, 'Tra mã bệnh ICD-10, mã YHCT và mã thuốc/hóa chất'))));
 
   // dãy ô thống kê — đếm sống từ dữ liệu đang có
   const nRevoked = (UD.codes.icd || []).filter(r => /hủy|huỷ|thu hồi|revok/i.test(r.status || '')).length;
