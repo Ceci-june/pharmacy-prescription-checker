@@ -326,6 +326,7 @@ textarea.fi{resize:vertical;line-height:1.55}
       <button class="tab" data-tab="icd">Tra cứu mã</button>
       <button class="tab" data-tab="inter">Tương tác</button>
       <button class="tab" data-tab="circular">Thông tư</button>
+      <button class="tab" data-tab="recall">Tái khám</button>
     </span>
     <span class="sp"></span>
     <span class="ver" id="ver"></span>
@@ -387,7 +388,7 @@ const ALIAS = {liver:'suygan',kidney:'suythan',cvd:'htn',bf:'bfeed'};
 const QUIZ_ALIAS = {indigestion:'dyspepsia'};
 
 let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', icdChap:'', icdStat:'', rxAck:'', exp:{}, sel:{},
-  rxImg:null, rxItems:[], rxq:'', rxZoom:false};
+  rxImg:null, rxItems:[], rxq:'', rxZoom:false, rcDate:'', rcDays:''};
 
 // ── Dữ liệu người dùng tự nhập (Danh mục + Thông tư) ──────────────────
 // Lưu ở localStorage. Trên file:// mọi trang dùng chung origin nên key phải riêng biệt;
@@ -827,6 +828,109 @@ function renderIcd(m) {
   m.appendChild(box);
 }
 
+// ── Tính ngày tái khám ──────────────────────────────
+// Chỗ dễ sai duy nhất ở đây là lệch một ngày: lĩnh 30 ngày thuốc, uống viên đầu ngay
+// ngày khám thì viên cuối rơi vào ngày khám + 29, còn hẹn tái khám là ngày khám + 30
+// (để hôm tái khám đã hết thuốc, không hụt ngày nào). Hai mốc đó KHÁC nhau nên hiện
+// cả hai, không tự chọn hộ một cái rồi để người dùng đoán mình đang xem mốc nào.
+const WDAY = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+const pad2 = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const dmy = d => pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
+// Tự tách chuỗi rồi dựng Date theo giờ ĐỊA PHƯƠNG. new Date('2026-10-20') bị hiểu là
+// mốc UTC nên ở múi giờ âm sẽ lùi mất một ngày — sai lệch âm thầm, rất khó thấy.
+function parseYmd(v) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v || '').trim());
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return isNaN(d) || d.getMonth() !== +m[2] - 1 ? null : d;
+}
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+// Làm tròn vì hai mốc nửa đêm có thể lệch 23 hay 25 giờ ở nơi có giờ mùa hè.
+const dayGap = (a, b) => Math.round((b - a) / 86400000);
+
+function renderRecall(m) {
+  const today = new Date();
+  if (!S.rcDate) S.rcDate = ymd(today);
+
+  m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '📅'),
+    el('span', {}, el('h1', {}, 'Tính ngày tái khám'),
+      el('div', {cls:'sub'}, 'Ngày khám + số ngày thuốc → ngày hẹn tái khám'))));
+
+  const dateIn = el('input', {type:'date', cls:'fi', value:S.rcDate});
+  const daysIn = el('input', {type:'number', cls:'fi', min:'1', step:'1',
+    placeholder:'ví dụ 30', value:S.rcDays});
+  const out = el('div', {});
+
+  // Chỉ vẽ lại phần kết quả, không dựng lại cả tab — gõ vào ô số mà re-render toàn bộ
+  // thì con trỏ nhảy lung tung.
+  const chips = [];
+  function update() {
+    S.rcDate = dateIn.value; S.rcDays = daysIn.value;
+    // Gõ tay một con số trùng với chip chọn nhanh thì chip đó cũng phải sáng, nếu không
+    // nhìn vào sẽ tưởng đang ở mốc khác.
+    chips.forEach(c => c.b.className = 'chip' + (String(c.d) === String(daysIn.value) ? ' on' : ''));
+    out.textContent = '';
+    const d0 = parseYmd(dateIn.value);
+    const n = Math.floor(Number(daysIn.value));
+    const note = t => el('div', {cls:'card'}, el('div', {cls:'bd'},
+      el('div', {style:'color:var(--ink3);font-size:12.8px'}, t)));
+    if (!d0) { out.appendChild(note('Chọn ngày khám để tính.')); return; }
+    if (!(n >= 1)) { out.appendChild(note('Nhập số ngày thuốc (từ 1 trở lên).')); return; }
+
+    const last = addDays(d0, n - 1);
+    const next = addDays(d0, n);
+    const gap = dayGap(new Date(today.getFullYear(), today.getMonth(), today.getDate()), next);
+    const away = gap > 0 ? 'còn ' + gap + ' ngày nữa'
+      : gap === 0 ? 'chính là hôm nay' : 'đã qua ' + (-gap) + ' ngày';
+
+    const tile = (val, label, on) => el('div', {cls:'stat flat' + (on ? ' on' : ''),
+      style:'min-width:150px'},
+      el('div', {cls:'n'}, val), el('div', {cls:'l'}, label));
+
+    out.appendChild(el('div', {cls:'stats'},
+      tile(dmy(next), 'Ngày tái khám · ' + WDAY[next.getDay()], true),
+      tile(dmy(last), 'Uống hết thuốc ngày · ' + WDAY[last.getDay()]),
+      tile(n + ' ngày', 'Số ngày thuốc · ' + away)));
+
+    out.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
+      el('div', {style:'font-size:12.8px;line-height:1.65'},
+        el('b', {}, 'Cách tính: '),
+        'uống viên đầu ngay ngày khám ' + dmy(d0) + ' (' + WDAY[d0.getDay()] + '), '
+        + n + ' ngày thuốc hết vào hết ngày ' + dmy(last) + '. '
+        + 'Hẹn tái khám ' + dmy(next) + ' để hôm đó vừa hết thuốc, không hụt ngày nào.'),
+      // Lịch nghỉ mỗi nơi mỗi khác nên chỉ nhắc, không tự dời ngày.
+      next.getDay() === 0 || next.getDay() === 6
+        ? el('div', {cls:'flag med', style:'margin-top:10px'},
+            el('div', {cls:'f'}, '⚠ Ngày tái khám rơi vào ' + WDAY[next.getDay()]),
+            el('div', {cls:'a'}, 'Kiểm tra lịch làm việc, có thể phải hẹn lệch ngày.'))
+        : null)));
+  }
+
+  dateIn.addEventListener('input', update);
+  daysIn.addEventListener('input', update);
+
+  const QUICK = [3, 5, 7, 10, 14, 21, 28, 30, 60, 90];
+  m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
+    el('div', {style:'display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end'},
+      el('div', {cls:'frow', style:'margin-bottom:0;flex:1 1 190px'},
+        el('label', {}, 'Ngày khám'), dateIn),
+      el('div', {cls:'frow', style:'margin-bottom:0;flex:1 1 150px'},
+        el('label', {}, 'Số ngày thuốc'), daysIn),
+      el('button', {cls:'btn ghost', onclick:() => {
+        dateIn.value = ymd(new Date()); update();
+      }}, 'Hôm nay')),
+    el('div', {cls:'chips', style:'margin-top:12px'}, QUICK.map(d => {
+      const b = el('button', {cls:'chip',
+        onclick:() => { daysIn.value = d; update(); }}, d + ' ngày');
+      chips.push({b, d});
+      return b;
+    })))));
+
+  m.appendChild(out);
+  update();
+}
+
 function renderMain() {
   const m = document.getElementById('main');
   m.textContent = '';
@@ -841,6 +945,7 @@ function renderMain() {
   if (S.tab === 'rx') { renderRx(m); return; }
   if (S.tab === 'icd') { renderIcd(m); return; }
   if (S.tab === 'inter') { renderInters(m); return; }
+  if (S.tab === 'recall') { renderRecall(m); return; }
   if (S.page === 'index') { renderIndex(m); return; }
   const d = dis();
   if (!d) { m.appendChild(el('div', {cls:'empty'}, '← Chọn một bệnh để bắt đầu')); return; }
