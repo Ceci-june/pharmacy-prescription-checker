@@ -395,19 +395,76 @@ let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:''
 // và vì xoá dữ liệu duyệt web là mất, luôn có nút Xuất Excel để sao lưu thật.
 const LSKEY = 'gdd.userdata.v1';
 let UD = {drugs:[], circulars:[], inters:[], codes:{}, seeded:[]}, lsOK = true;
-// Dựng bản ghi của một bộ mã từ dữ liệu nhúng sẵn trong bản build.
+// ── Bộ mã tham chiếu: chỉ lưu PHẦN KHÁC, không lưu nguyên ───────────────
+// Ba bộ mã cộng lại hơn 24.000 dòng. Ghi nguyên vào localStorage là vượt hạn mức
+// (Chrome tính 2 byte mỗi ký tự trên hạn ~5 MB cho một origin) — udSave() sẽ ném lỗi,
+// app chuyển sang "không lưu được" và người dùng mất cả Danh mục lẫn Thông tư, tức là
+// mất đúng phần dữ liệu KHÔNG thể dựng lại. Dữ liệu tham chiếu thì ngược lại: nó nằm
+// sẵn trong bản build, lưu lại chỉ là chép thừa.
+//
+// Nên localStorage chỉ giữ ba thứ cho mỗi bộ: dòng tự thêm, dòng đã sửa, và id những
+// dòng gốc đã xoá. Mở lại thì dựng lại từ dữ liệu nhúng rồi áp phần khác đó lên.
+// Muốn so được với bản gốc thì id của dòng gốc phải CỐ ĐỊNH, không random như trước.
+const seedId = (key, i) => key + '#' + i;
 function seedCodes(key) {
-  return (CODE_SEED[key] || []).map(r => ({ ...r, id:uid() }));
+  return (CODE_SEED[key] || []).map((r, i) => ({ ...r, id:seedId(key, i) }));
 }
+// So theo từng trường, không so chuỗi JSON: thứ tự khoá khác nhau vẫn phải coi là giống.
+const sameRow = (a, b) => Object.keys(Object.assign({}, a, b))
+  .every(k => String(a[k] == null ? '' : a[k]) === String(b[k] == null ? '' : b[k]));
+
+function codesDiff(key, list) {
+  const base = new Map(seedCodes(key).map(r => [r.id, r]));
+  const add = [], edit = {}, alive = new Set();
+  for (const r of list) {
+    const b = base.get(r.id);
+    if (!b) { add.push(r); continue; }
+    alive.add(r.id);
+    if (!sameRow(b, r)) edit[r.id] = r;
+  }
+  const del = [...base.keys()].filter(id => !alive.has(id));
+  return { add, edit, del };
+}
+function codesFromDiff(key, d) {
+  const del = new Set(d.del || []), edit = d.edit || {};
+  const out = [];
+  for (const r of seedCodes(key)) { if (!del.has(r.id)) out.push(edit[r.id] || r); }
+  return out.concat(d.add || []);
+}
+
+// Chuyển dữ liệu định dạng CŨ (lưu nguyên cả danh sách, id ngẫu nhiên) sang định dạng mới.
+// Hai việc: gán lại id cố định cho dòng nào trùng khớp bản gốc, và BỔ SUNG những mã gốc
+// chưa có. Thiếu ở đây nghĩa là bản build hồi đó chưa kèm mã ấy — không phải người dùng đã
+// xoá, nên phải thêm vào, nếu không bản cũ sẽ mãi kẹt ở 336 mã ICD.
+// Đổi lại: mã nào người dùng từng chủ ý xoá sẽ quay lại một lần sau khi cập nhật. Chấp nhận,
+// vì giấu mất hơn 15.000 mã mới thì tệ hơn nhiều, và xoá lại thì chỉ một thao tác.
+function migrateCodes(key, arr) {
+  const seed = seedCodes(key);
+  const byContent = new Map(seed.map(r => [r.code + '\u0000' + r.dx, r]));
+  const used = new Set();
+  const out = (arr || []).map(r => {
+    const m = byContent.get(r.code + '\u0000' + r.dx);
+    if (m && !used.has(m.id)) { used.add(m.id); return Object.assign({}, m, r, { id:m.id }); }
+    return r;
+  });
+  return out.concat(seed.filter(r => !used.has(r.id)));
+}
+
 function udLoad() {
   try {
     const raw = localStorage.getItem(LSKEY);
     const o = raw ? (JSON.parse(raw) || {}) : {};
     if (raw) {
       UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
-      UD.codes = o.codes || {};
+      const stored = o.codes || {};
       // Bản cũ lưu ICD ở UD.icd — chuyển sang UD.codes.icd, giữ nguyên mọi sửa đổi.
-      if (!UD.codes.icd && o.icd) UD.codes.icd = o.icd;
+      if (!stored.icd && o.icd) stored.icd = o.icd;
+      UD.codes = {};
+      for (const k in stored) {
+        // Mảng = định dạng cũ (lưu nguyên danh sách). Object = định dạng phần khác.
+        UD.codes[k] = Array.isArray(stored[k])
+          ? migrateCodes(k, stored[k]) : codesFromDiff(k, stored[k] || {});
+      }
     }
     // `seeded` ghi lại những bộ ĐÃ từng được nạp sẵn. Nhờ nó phân biệt được hai cảnh
     // khác hẳn nhau mà cùng cho mảng rỗng: người dùng cố tình xoá sạch một bộ (phải
@@ -430,8 +487,13 @@ function udLoad() {
   if (moved) udSave();
 }
 function udSave() {
-  try { localStorage.setItem(LSKEY, JSON.stringify(UD)); lsOK = true; }
-  catch (e) { lsOK = false; }
+  try {
+    const payload = { drugs:UD.drugs, circulars:UD.circulars, inters:UD.inters,
+                      seeded:UD.seeded, codes:{} };
+    for (const k in UD.codes) payload.codes[k] = codesDiff(k, UD.codes[k] || []);
+    localStorage.setItem(LSKEY, JSON.stringify(payload));
+    lsOK = true;
+  } catch (e) { lsOK = false; }
 }
 const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -474,7 +536,12 @@ const ICD_FIELDS = [
 // bộ máy CRUD; `extra` là các cột riêng của từng bộ, chèn ngay sau tên. Cả 3 bộ đều
 // được nạp sẵn từ dữ liệu build.
 const CODE_SETS = [
-  {key:'icd',    tab:'ICD-10',             label:'mã ICD-10',  nameLabel:'Chẩn đoán',        sheet:'ICD 10'},
+  {key:'icd',    tab:'ICD-10',             label:'mã ICD-10',  nameLabel:'Chẩn đoán',        sheet:'ICD 10',
+   extra:[
+     {k:'en',    label:'Tên tiếng Anh', area:true, alias:['Tên tiếng Anh', 'English']},
+     {k:'flags', label:'Ghi chú mã hóa', area:true, alias:['Ghi chú mã hoá']},
+     {k:'sex',   label:'Giới hạn giới tính', alias:['Giới']},
+   ]},
   {key:'yhct',   tab:'YHCT',               label:'mã YHCT',    nameLabel:'Tên bệnh/chứng YHCT', sheet:'YHCT',
    extra:[
      {k:'icd10',   label:'Mã ICD-10 tương ứng', alias:['Mã ICD-10', 'Mã ICD']},
@@ -734,11 +801,13 @@ function renderIcd(m) {
       (CODE_SEED[c.key] || []).length ? el('button', {cls:'btn ghost',
         title:'Nạp lại ' + CODE_SEED[c.key].length + ' mã đi kèm bản build',
         onclick:() => {
-          const seed = CODE_SEED[c.key];
+          // Lấy lại chính dòng gốc KÈM id cố định của nó, đừng cấp id mới: có id gốc thì
+          // lúc lưu nó gộp về phần "không đổi" và không tốn chỗ trong localStorage.
+          const seed = seedCodes(c.key);
           const add = seed.filter(r => !list.some(x => x.code === r.code && x.dx === r.dx));
           if (!add.length) { alert('Danh sách đã có đủ ' + seed.length + ' mã gốc.'); return; }
           if (!confirm('Thêm lại ' + add.length + ' mã gốc còn thiếu?\nCác mã bạn tự thêm/sửa vẫn giữ nguyên.')) return;
-          UD.codes[c.key] = list.concat(add.map(r => ({ ...r, id:uid() })));
+          UD.codes[c.key] = list.concat(add);
           udSave(); renderMain();
         }}, 'Khôi phục mã gốc') : null),
     selWrap)));

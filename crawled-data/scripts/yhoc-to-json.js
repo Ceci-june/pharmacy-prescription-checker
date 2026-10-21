@@ -55,13 +55,42 @@ if (SET === 'yhct') {
     status: '',
     note: '',
   }));
+} else if (SET === 'icd') {
+  // Các cờ của Bộ Y tế. Thứ tự trong STATUS_RANK là thứ tự ƯU TIÊN khi một mã dính
+  // nhiều cờ: ô Trạng thái chỉ giữ MỘT giá trị vì chip lọc so khớp nguyên văn, dính
+  // nhiều cờ mà nối hết vào thì sinh ra hàng chục chip lắt nhắt. Cờ đầy đủ nằm ở
+  // cột "Ghi chú mã hóa", vẫn tìm kiếm được.
+  const FLAG = {
+    notPrimary: 'Không dùng làm bệnh chính',
+    mortalityOnly: 'Chỉ dùng cho nguyên nhân tử vong',
+    hasMoreSpecificCode: 'Có mã chi tiết hơn',
+    notRecommendedPrimary: 'Không khuyến khích làm bệnh chính',
+    dagger: 'Mã † (bệnh nguyên)',
+    asterisk: 'Mã * (biểu hiện bệnh)',
+  };
+  const STATUS_RANK = ['notPrimary', 'mortalityOnly', 'hasMoreSpecificCode', 'notRecommendedPrimary'];
+  out = rows.map(r => {
+    const on = Object.keys(FLAG).filter(k => r[k]);
+    return {
+      code: trim(r.code),
+      dx: trim(r.nameVi),
+      en: trim(r.nameEn),
+      flags: on.map(k => FLAG[k]).join(' · '),
+      sex: r.femaleOnly ? 'Chỉ dùng cho nữ' : r.maleOnly ? 'Chỉ dùng cho nam' : '',
+      status: (STATUS_RANK.find(k => r[k]) && FLAG[STATUS_RANK.find(k => r[k])]) || '',
+      note: '',
+    };
+  });
 } else {
-  console.error('dùng: node yhoc-to-json.js <yhct|pl3> <src.json> <out.json>');
+  console.error('dùng: node yhoc-to-json.js <yhct|pl3|icd> <src.json> <out.json>');
   process.exit(1);
 }
 
 out = out.filter(r => r.code && r.dx);
-out.sort((a, b) => a.code.localeCompare(b.code, 'vi') || a.dx.localeCompare(b.dx, 'vi'));
+// Mã ICD sắp theo bảng mã chuẩn để A00 < A00.0 < A01; hai bộ kia sắp theo tiếng Việt.
+out.sort(SET === 'icd'
+  ? (a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+  : (a, b) => a.code.localeCompare(b.code, 'vi') || a.dx.localeCompare(b.dx, 'vi'));
 fs.writeFileSync(OUT, JSON.stringify(out, null, 1));
 
 console.log(`${path.basename(OUT)} — ${out.length} mã (bỏ ${rows.length - out.length} dòng thiếu mã/tên)`);

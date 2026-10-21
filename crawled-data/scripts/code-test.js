@@ -113,6 +113,59 @@ const out = {};
   await page.fill('input[type=search]', 'ghi chú thử');
   out.editSurvivesReload = await page.locator('.icdrow').count();
 
+  // ── 12. localStorage chỉ được lưu PHẦN KHÁC, không lưu nguyên bộ mã ──
+  await reset(null);
+  out.storage = await page.evaluate(() => {
+    udSave();
+    const raw = localStorage.getItem('gdd.userdata.v1');
+    const o = JSON.parse(raw);
+    return {
+      kyTu: raw.length,
+      dangLuu: Object.fromEntries(Object.entries(o.codes).map(([k, v]) =>
+        [k, 'thêm ' + v.add.length + ' · sửa ' + Object.keys(v.edit).length + ' · xoá ' + v.del.length])),
+      luuDuoc: lsOK,
+    };
+  });
+
+  // sửa một mã → chỉ mã đó đi vào phần "sửa", và sống sót qua tải lại
+  await page.click('.subtab:has-text("ICD-10")');
+  await page.fill('input[type=search]', 'A00.0');
+  await page.click('.icdrow .btn:has-text("Sửa")');
+  await page.fill('.frow:has-text("Ghi chú") .fi', 'đánh dấu riêng');
+  await page.click('.modal .btn:has-text("Lưu thay đổi")');
+  out.afterOneEdit = await page.evaluate(() => {
+    const o = JSON.parse(localStorage.getItem('gdd.userdata.v1'));
+    return { kyTu: JSON.stringify(o).length, suaIcd: Object.keys(o.codes.icd.edit).length,
+             themIcd: o.codes.icd.add.length, xoaIcd: o.codes.icd.del.length };
+  });
+  await page.reload();
+  await page.click('.tab[data-tab="icd"]');
+  await page.fill('input[type=search]', 'đánh dấu riêng');
+  out.editSurvives = await page.locator('.icdrow').count();
+
+  // xoá một mã gốc → vào phần "xoá", và KHÔNG mọc lại sau khi tải lại
+  await page.fill('input[type=search]', 'A00.1');
+  const before = await page.locator('.icdrow').count();
+  await page.click('.icdrow .btn:has-text("Xoá")');
+  await page.reload();
+  await page.click('.tab[data-tab="icd"]');
+  await page.fill('input[type=search]', 'A00.1');
+  out.deleteSticks = { truoc: before, sau: await page.locator('.icdrow').count() };
+
+  // ── 13. dữ liệu định dạng CŨ (mảng nguyên) phải được bổ sung, không bị coi là đã xoá ──
+  await reset({
+    drugs: [], circulars: [], inters: [],
+    codes: { icd: [
+      { id: 'old1', code: 'A00', dx: 'Bệnh tả', note: 'ghi chú cũ của tôi' },
+      { id: 'old2', code: 'ZZZ.9', dx: 'Mã tôi tự thêm', note: '' },
+    ] },
+  });
+  out.legacyArray = await counts();
+  await page.fill('input[type=search]', 'ghi chú cũ của tôi');
+  out.legacyNoteKept = await page.locator('.icdrow').count();
+  await page.fill('input[type=search]', 'Mã tôi tự thêm');
+  out.legacyOwnCodeKept = await page.locator('.icdrow').count();
+
   out.errors = errors;
   out.external = external;
   console.log(JSON.stringify(out, null, 1));
