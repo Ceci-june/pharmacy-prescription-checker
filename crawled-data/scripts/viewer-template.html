@@ -1703,12 +1703,37 @@ async function rxRunOcr() {
 
 // Đối chiếu chữ OCR với Danh mục. Danh mục đóng vai trò sửa lỗi: chỉ cần một từ đặc trưng
 // trong tên (hoặc hoạt chất) xuất hiện là khớp, nên OCR sai vài ký tự vẫn tìm ra đúng thuốc.
-const deAccent = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+// NFD KHÔNG tách được chữ đ: nó là một ký tự riêng (U+0111), không phải d + dấu. Bước lọc
+// [^a-z0-9] phía sau vì thế xoá luôn chữ đó — "Đinh lăng" thành "inh lang", "đường" thành
+// "uong". Từ bị cụt mất một ký tự nên rơi xuống dưới ngưỡng độ dài và không còn khớp được.
+// Phải thay tay trước khi chuẩn hoá.
+const deAccent = s => String(s || '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '');
 const rxNorm = s => deAccent(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // Từ hoạt chất quá phổ thông, khớp theo chúng thì trúng hàng chục sản phẩm → vô dụng.
 const GENERIC_ING = new Set(['natri', 'kali', 'calci', 'calcium', 'magnesi', 'acid', 'vitamin',
   'nuoc', 'muoi', 'cao', 'kho', 'dang', 'duoi', 'tuong', 'duong', 'hydroclorid', 'hydrochlorid',
   'sulfat', 'besylat', 'maleat', 'natrium']);
+
+// Từ chỉ DẠNG BÀO CHẾ và đơn vị. Có mặt trong tên gần như mọi thuốc, và có mặt luôn trong
+// cột ĐVT của đơn, nên khi cân bằng chứng chúng không nói lên điều gì — đếm vào chỉ làm mọi
+// ứng viên cùng cộng điểm.
+const RX_FORM = new Set(['vien', 'nen', 'nang', 'cung', 'mem', 'bao', 'phim', 'tan', 'sui',
+  'goi', 'ong', 'chai', 'tuyp', 'dich', 'dung', 'siro', 'bot', 'com', 'hon', 'treo',
+  'tiem', 'truyen', 'uong', 'ngam', 'nhai', 'dat', 'boi', 'xit', 'nho', 'gel', 'kem',
+  'mg', 'ml', 'gam', 'mcg', 'hop', 'via']);
+
+// Tổng BẰNG CHỨNG của một thuốc trên một dòng: đếm số TỪ RIÊNG BIỆT trong tên và trong
+// hoạt chất xuất hiện nguyên vẹn trên dòng đó. Dùng để phân xử khi nhiều thuốc cùng trúng
+// đúng một từ: dòng "hoat huyet ducing ndo dinh 1 ling bach qua" trúng chữ "huyet" của cả
+// "Hoạt huyết dưỡng não" lẫn "Bổ Huyết Ích Não", nhưng thuốc thứ nhất còn trúng thêm
+// "hoat", "dinh", "bach" — tức là hơn hẳn chứ không phải hoà.
+function rxEvidence(d, pad) {
+  const ok = w => w.length >= 4 && !RX_FORM.has(w) && !GENERIC_ING.has(w)
+    && pad.includes(' ' + w + ' ');
+  const words = t => [...new Set(rxNorm(t || '').split(' '))].filter(ok).length;
+  return words(d.name) + words(d.ing);
+}
 
 // Quét THEO TỪNG DÒNG. Khớp theo tên thuốc là gần như chắc chắn (tên riêng, đặc trưng);
 // khớp theo hoạt chất thì mơ hồ — "paracetamol" trúng cả chục sản phẩm — nên chỉ dùng để
@@ -1776,6 +1801,13 @@ function rxScan() {
         });
         if (glued.length === 1) cands = glued;
       }
+      // Vẫn hoà: xét tổng bằng chứng trên dòng. Chỉ chốt khi HƠN HẲN — bản thân phải có
+      // từ 3 bằng chứng trở lên VÀ nhiều hơn á quân ít nhất 2. Hơn một chút thì vẫn để
+      // người chọn: chọn sai là sai thuốc, thà hỏi còn hơn đoán.
+      if (cands.length > 1) {
+        const ev = cands.map(c => ({ c, n:rxEvidence(c.drug, pad) })).sort((a, b) => b.n - a.n);
+        if (ev[0].n >= 3 && ev[0].n - ev[1].n >= 2) cands = [ev[0].c];
+      }
       if (cands.length === 1) {
         const d = cands[0].drug;
         if (!added.has(d.name) && !seen.has(d.name)) {
@@ -1784,7 +1816,7 @@ function rxScan() {
         }
       } else {
         // Còn mơ hồ (ví dụ dòng "Tatanol Paracetamol" trúng nhiều sản phẩm tên PARACETAMOL…)
-        amb.push({ line, ing:cands[0].w, cands:cands.slice(0, 5), total:cands.length });
+        amb.push({ line, by:'tên', ing:cands[0].w, cands:cands.slice(0, 5), total:cands.length });
       }
       continue;
     }
@@ -1796,7 +1828,7 @@ function rxScan() {
         if (w.length >= 7 && !GENERIC_ING.has(w) && pad.includes(' ' + w + ' ')) { ingCands.push({ drug:d, w }); break; }
       }
     }
-    if (ingCands.length) amb.push({ line, ing:ingCands[0].w, cands:ingCands.slice(0, 5), total:ingCands.length });
+    if (ingCands.length) amb.push({ line, by:'hoạt chất', ing:ingCands[0].w, cands:ingCands.slice(0, 5), total:ingCands.length });
   }
   return { sure, amb };
 }
@@ -1952,13 +1984,15 @@ function renderRx(m) {
       }
 
       if (sc.amb.length) right.appendChild(el('div', {cls:'card'},
-        el('div', {cls:'hd'}, 'Chỉ khớp hoạt chất — cần bạn chọn', el('span', {cls:'tag'}, sc.amb.length)),
+        el('div', {cls:'hd'}, 'Nhiều thuốc cùng khớp — cần bạn chọn', el('span', {cls:'tag'}, sc.amb.length)),
         el('div', {cls:'bd'},
           el('div', {cls:'note', style:'margin-bottom:8px'},
-            'Những dòng này có hoạt chất trùng Danh mục nhưng tên biệt dược thì không có, nên không tự thêm được — nhiều sản phẩm cùng hoạt chất, chọn sai là sai thuốc.'),
+            'Những dòng này khớp với nhiều thuốc trong Danh mục mà không thuốc nào hơn hẳn, nên không tự thêm được — chọn sai là sai thuốc.'),
           sc.amb.map(a => el('div', {cls:'ambrow', style:'padding:9px 11px'},
             el('div', {style:'font-size:12.5px;font-weight:650;margin-bottom:5px'},
-              'Dòng đọc được: “' + a.line + '” → hoạt chất ' + a.ing + ' (' + a.total + ' sản phẩm trong Danh mục)'),
+              // Ghi đúng chỗ đã khớp: chữ trúng có thể nằm ở TÊN thuốc chứ không phải hoạt chất.
+              'Dòng đọc được: “' + a.line + '” → ' + (a.by || 'hoạt chất') + ' ' + a.ing
+              + ' (' + a.total + ' sản phẩm trong Danh mục)'),
             el('div', {cls:'hits', style:'margin-top:0'}, a.cands.map(cd =>
               el('button', {cls:'hit', onclick:() => { S.rxItems.push({ id:uid(), drug:cd.drug }); renderMain(); }},
                 el('div', {cls:'hn'}, cd.drug.name), el('div', {cls:'hi'}, cd.drug.ing || '—')))))))));
