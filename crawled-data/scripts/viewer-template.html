@@ -320,13 +320,13 @@ textarea.fi{resize:vertical;line-height:1.55}
 <div id="shell">
   <header>
     <span class="tabs" id="tabs">
-      <button class="tab on" data-tab="otc">OTC Data</button>
-      <button class="tab" data-tab="catalog">Danh mục</button>
+      <button class="tab on" data-tab="catalog">Danh mục</button>
       <button class="tab" data-tab="rx">Kiểm tra đơn</button>
       <button class="tab" data-tab="icd">Tra cứu mã</button>
       <button class="tab" data-tab="inter">Tương tác</button>
-      <button class="tab" data-tab="circular">Thông tư</button>
       <button class="tab" data-tab="recall">Tái khám</button>
+      <button class="tab" data-tab="circular">Thông tư</button>
+      <button class="tab" data-tab="otc">OTC Data</button>
     </span>
     <span class="sp"></span>
     <span class="ver" id="ver"></span>
@@ -387,7 +387,7 @@ const ALIAS = {liver:'suygan',kidney:'suythan',cvd:'htn',bf:'bfeed'};
 // Bank quiz "dyspepsia" thực chất thuộc bệnh indigestion (app gốc tra theo id nên bỏ sót).
 const QUIZ_ALIAS = {indigestion:'dyspepsia'};
 
-let S = {tab:'otc', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', icdChap:'', icdStat:'', rxAck:'', exp:{}, sel:{},
+let S = {tab:'catalog', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', icdChap:'', icdStat:'', rxAck:'', exp:{}, sel:{},
   rxImg:null, rxItems:[], rxq:'', rxZoom:false, rcDate:'', rcDays:''};
 
 // ── Dữ liệu người dùng tự nhập (Danh mục + Thông tư) ──────────────────

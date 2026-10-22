@@ -24,7 +24,8 @@ const TZ = 'America/Los_Angeles';
   await page.evaluate(() => localStorage.removeItem('gdd.userdata.v1'));
   await page.reload();
 
-  out.tabIsLast = await page.$$eval('#tabs .tab', ns => ns[ns.length - 1].textContent);
+  // Tái khám đứng ngay TRƯỚC Thông tư; OTC Data là tab cuối cùng.
+  out.tabOrder = await page.$$eval('#tabs .tab', ns => ns.map(n => n.textContent).join(' | '));
   await page.click('.tab[data-tab="recall"]');
   out.title = await page.locator('.dtitle h1').textContent();
   out.defaultsToToday = await page.inputValue('input[type=date]');
