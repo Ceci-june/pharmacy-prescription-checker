@@ -27,3 +27,8 @@ node_modules/
 
 # Tài liệu nội bộ (mô tả nguồn dữ liệu) — không public
 crawled-data/README.md
+
+# Tài liệu gốc của Bộ Y tế — nguồn tra cứu, không phải mã nguồn của dự án.
+# Tải lại từ datafiles.chinhphu.vn khi cần; không nhét 47 MB vào repo.
+06-byt-kem.pdf
+kem.txt
