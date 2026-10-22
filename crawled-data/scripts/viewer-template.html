@@ -1728,6 +1728,45 @@ const RX_FORM = new Set(['vien', 'nen', 'nang', 'cung', 'mem', 'bao', 'phim', 't
 // đúng một từ: dòng "hoat huyet ducing ndo dinh 1 ling bach qua" trúng chữ "huyet" của cả
 // "Hoạt huyết dưỡng não" lẫn "Bổ Huyết Ích Não", nhưng thuốc thứ nhất còn trúng thêm
 // "hoat", "dinh", "bach" — tức là hơn hẳn chứ không phải hoà.
+// Tìm một dãy từ LIỀN MẠCH trong dòng; trả về vị trí từ đầu tiên, -1 nếu không có.
+function rxRun(toks, words, maxStart) {
+  for (let i = 0; i + words.length <= toks.length && i <= maxStart; i++) {
+    let ok = true;
+    for (let k = 0; k < words.length; k++) if (toks[i + k] !== words[k]) { ok = false; break; }
+    if (ok) return i;
+  }
+  return -1;
+}
+// Tìm cụm từ dài nhất của `text` xuất hiện LIỀN MẠCH trên dòng: từ 2 âm tiết trở lên và
+// cộng lại từ 6 chữ cái.
+//
+// Lý do phải có bước này: tên thuốc Việt gồm toàn âm tiết NGẮN — "Diệp hạ châu" là
+// diep/ha/chau, "Hoạt huyết dưỡng não" là hoat/huyet/duong/nao — nên luật "một từ dài
+// >= 5 ký tự" bỏ sót sạch nhóm đông dược, dù OCR đọc đúng từng chữ. Một cụm liền mạch là
+// bằng chứng mạnh ngang một từ dài, vì xác suất trùng ngẫu nhiên thấp hơn nhiều.
+//
+// Phải thử NGẮN DẦN chứ không chỉ lấy cụm dài nhất: phần mềm BHYT cắt cụt nội dung theo
+// bề rộng cột, nên hoạt chất "Cao khô diệp hạ châu đắng" trên ảnh có thể chỉ còn
+// "Diep ha chau" — chỉ so cụm đầy đủ thì trượt.
+function rxPhraseHit(toks, text, maxStart) {
+  const w = rxNorm(String(text || '').replace(/\([^)]*\)/g, ' ')).split(' ').filter(Boolean);
+  let best = null;
+  for (let a = 0; a < w.length; a++) {
+    for (let b = w.length; b > a + 1; b--) {
+      const ph = w.slice(a, b);
+      if (ph.join('').length < 6) break;   // ngắn dần, đã dưới ngưỡng thì thôi
+      const at = rxRun(toks, ph, maxStart);
+      if (at < 0) continue;
+      const str = ph.join(' ');
+      if (!best || at < best.pos || (at === best.pos && str.length > best.w.length)) {
+        best = { pos:at, w:str };
+      }
+      break;                               // với vị trí này, cụm dài nhất khớp được là đủ
+    }
+  }
+  return best;
+}
+
 function rxEvidence(d, pad) {
   const ok = w => w.length >= 4 && !RX_FORM.has(w) && !GENERIC_ING.has(w)
     && pad.includes(' ' + w + ' ');
@@ -1742,9 +1781,12 @@ function rxScan() {
   const empty = { sure: [], amb: [] };
   if (!S.rxText || !UD.drugs.length) return empty;
   const added = new Set(S.rxItems.filter(x => x.drug).map(x => x.drug.name));
-  // Bỏ dòng tiêu đề bảng ("Tên | Hoạt chất | ĐVT | S.Lượng…") — nó khớp rác, ví dụ "Phong ra toa"
-  // trúng hoạt chất của 6 thuốc.
-  const isHeader = l => /hoat chat|s luon|don gia|thanh ti|phong ra/.test(l);
+  // Bỏ dòng tiêu đề và chân phiếu. Chúng không phải dòng thuốc, nhưng chữ trong đó lại trùng
+  // tên thuốc thật nên sinh khớp nhầm có hệ thống:
+  //   "BỆNH VIỆN ĐA KHOA"  → cụm "viên đa" của "Viên Dạ Dày CHOLAPAN OPC"
+  //   "Người lập bảng"     → chữ "người" của "THUỐC HO NGƯỜI LỚN OPC"
+  //   "Phong ra toa"       → hoạt chất của 6 thuốc
+  const isHeader = l => /hoat chat|s luon|so luong|don gia|thanh ti|phong ra|benh vien|nguoi lap|nguoi benh|nguoi nha|bac si|dieu tri|truong khoa|khoa duoc|duoc si|khoan muc|chi phi|chan doan|ho ten|so the|dia chi|gioi tinh|nam sinh|ngay \d|thang \d|nam \d{4}/.test(l);
   const lines = S.rxText.split('\n').map(rxNorm)
     .filter(l => l.replace(/[^a-z]/g, '').length >= 4 && !isHeader(l));
   const sure = [], amb = [], seen = new Set();
@@ -1778,6 +1820,12 @@ function rxScan() {
             best = { pos:i, sc, w:t };
           }
         }
+      }
+      // Cụm từ liền mạch trong tên — mạnh hơn một từ đơn nên cho điểm 4.
+      const ph = rxPhraseHit(toks, d.name, 4);
+      if (ph && (!best || ph.pos < best.pos || (ph.pos === best.pos
+          && (best.sc < 4 || (best.sc === 4 && ph.w.length > best.w.length))))) {
+        best = { pos:ph.pos, sc:4, w:ph.w };
       }
       if (best) cands.push({ drug:d, w:best.w, score:best.sc, pos:best.pos });
     }
@@ -1823,10 +1871,14 @@ function rxScan() {
     // 2) chỉ khớp hoạt chất → mơ hồ, để người chọn
     const ingCands = [];
     for (const d of UD.drugs) {
+      let got = null;
       for (const w of rxNorm(d.ing).split(' ')) {
         // >=7 ký tự và phải là cả từ (chặn hai đầu) — đủ chặt để không trúng chữ trong bảng.
-        if (w.length >= 7 && !GENERIC_ING.has(w) && pad.includes(' ' + w + ' ')) { ingCands.push({ drug:d, w }); break; }
+        if (w.length >= 7 && !GENERIC_ING.has(w) && pad.includes(' ' + w + ' ')) { got = w; break; }
       }
+      // Hoạt chất Việt cũng toàn âm tiết ngắn ("Diệp hạ châu"), nên xét cả cụm liền mạch.
+      if (!got) { const ph = rxPhraseHit(toks, d.ing, toks.length); if (ph) got = ph.w; }
+      if (got) ingCands.push({ drug:d, w:got });
     }
     if (ingCands.length) amb.push({ line, by:'hoạt chất', ing:ingCands[0].w, cands:ingCands.slice(0, 5), total:ingCands.length });
   }

@@ -63,6 +63,48 @@ const CASES = [
     ],
     mongDoi: { tuThem: [], moHo: 1 },
   },
+  {
+    ten: 'Diệp hạ châu KH — tên toàn âm tiết ngắn',
+    // Không âm tiết nào đủ 5 ký tự (diep/ha/chau/kh), nên luật "một từ dài" không với tới.
+    ocr: 'Diep ha chau KH | Diep ha chau | Vien | 20',
+    drugs: [
+      { name: 'Diệp hạ châu KH (viên nén bao phim)', ing: 'Cao khô diệp hạ châu đắng' },
+      { name: 'Cefuroxim 500mg (viên nén)', ing: 'Cefuroxim 500mg' },
+    ],
+    mongDoi: { tuThem: ['Diệp hạ châu KH (viên nén bao phim)'], moHo: 0 },
+  },
+  {
+    ten: 'Hai chế phẩm diệp hạ châu khác nhau — PHẢI tiếp tục hỏi',
+    ocr: 'Diep ha chau | Diep ha chau | Vien | 20',
+    drugs: [
+      { name: 'Diệp hạ châu KH (viên nén bao phim)', ing: 'Cao khô diệp hạ châu đắng' },
+      { name: 'Diệp hạ châu PV (viên nang cứng)', ing: 'Cao khô diệp hạ châu đắng' },
+    ],
+    mongDoi: { tuThem: [], moHo: 1 },
+  },
+  {
+    ten: 'Cụm trong tên không được trúng chữ ở cột khác',
+    // "ha chau" không có trên dòng; không được bịa ra khớp.
+    ocr: 'Cefuroxim 500mg | Cefuroxim | Vien | 14',
+    drugs: [
+      { name: 'Diệp hạ châu KH (viên nén bao phim)', ing: 'Cao khô diệp hạ châu đắng' },
+      { name: 'Cefuroxim 500mg (viên nén)', ing: 'Cefuroxim 500mg' },
+    ],
+    mongDoi: { tuThem: ['Cefuroxim 500mg (viên nén)'], moHo: 0 },
+  },
+  {
+    ten: 'Dòng tiêu đề và chân phiếu không được sinh ra thuốc',
+    ocr: ['Ten | Hoat chat | DVT | S.Luong | Don gia | Thanh tien',
+          'BENH VIEN DA KHOA KHU VUC',
+          'Nguoi lap bang Ngay 12 thang 05 nam 2026',
+          'Bac si dieu tri Truong khoa Duoc',
+          'Cong khoan muc chi phi'].join('\n'),
+    drugs: [
+      { name: 'Viên Dạ Dày CHOLAPAN OPC (viên nén bao phim)', ing: 'Cao đặc dược liệu' },
+      { name: 'THUỐC HO NGƯỜI LỚN OPC (nhũ tương uống)', ing: 'Cao lỏng dược liệu' },
+    ],
+    mongDoi: { tuThem: [], moHo: 0 },
+  },
 ];
 
 (async () => {
