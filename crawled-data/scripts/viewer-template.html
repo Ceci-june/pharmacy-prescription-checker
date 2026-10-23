@@ -182,6 +182,11 @@ header .tab.on{background:rgba(255,255,255,.2);opacity:1}
 .stat.on .n{color:var(--accent)}
 .stat .l{font-size:11px;color:var(--ink3);margin-top:1px}
 
+/* Tiêu đề bấm được để thu gọn cả khối bên dưới. */
+.foldhd{cursor:pointer;user-select:none}
+.foldhd:hover{background:var(--bg)}
+.foldhd .car{font-size:9px;color:var(--ink3);margin-right:1px}
+.tag.on{background:var(--accent);color:#fff}
 .chaps{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:7px}
 .chap{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:8px 11px;text-align:left}
 .chap:hover{border-color:var(--accent)}
@@ -829,17 +834,24 @@ function renderIcd(m) {
     const counts = {};
     for (const r of list) { const ch = chapterOf(r.code); if (ch) counts[ch[0]] = (counts[ch[0]] || 0) + 1; }
     const shown = ICD_CHAPTERS.filter(ch => counts[ch[0]]);
+    // 22 ô chương chiếm gần trọn màn hình, nên bấm vào tiêu đề để thu gọn. Mặc định mở;
+    // trạng thái giữ trong phiên làm việc, không ghi vào localStorage.
+    const open = !S.icdChapShut;
     if (shown.length) m.appendChild(el('div', {cls:'card'},
-      el('div', {cls:'hd'}, '📚 Duyệt theo chương',
+      el('div', {cls:'hd foldhd', title:'Bấm để ' + (open ? 'thu gọn' : 'mở') + ' bảng chương',
+        onclick:() => { S.icdChapShut = open; renderMain(); }},
+        el('span', {cls:'car'}, open ? '▼' : '▶'), '📚 Duyệt theo chương',
         el('span', {cls:'tag'}, shown.length + '/' + ICD_CHAPTERS.length + ' chương có mã'),
+        // Chương đang lọc phải thấy được cả khi bảng đã thu gọn.
+        S.icdChap ? el('span', {cls:'tag on'}, 'đang lọc chương ' + S.icdChap) : null,
         S.icdChap ? el('span', {style:'margin-left:auto'},
-          el('button', {cls:'btn ghost sm', onclick:() => { S.icdChap = ''; S.icdMax = 0; renderMain(); }}, 'Bỏ lọc chương')) : null),
-      el('div', {cls:'bd'}, el('div', {cls:'chaps'}, shown.map(ch =>
+          el('button', {cls:'btn ghost sm', onclick:e => { e.stopPropagation(); S.icdChap = ''; S.icdMax = 0; renderMain(); }}, 'Bỏ lọc chương')) : null),
+      open ? el('div', {cls:'bd'}, el('div', {cls:'chaps'}, shown.map(ch =>
         el('button', {cls:'chap' + (S.icdChap === ch[0] ? ' on' : ''),
           onclick:() => { S.icdChap = S.icdChap === ch[0] ? '' : ch[0]; S.icdMax = 0; renderMain(); }},
           el('span', {cls:'rn'}, ch[0]),
           el('span', {cls:'nm'}, ch[1], el('div', {cls:'rg'}, ch[2] + '–' + ch[3])),
-          el('span', {cls:'cnt'}, counts[ch[0]])))))));
+          el('span', {cls:'cnt'}, counts[ch[0]]))))) : null));
   }
 
   m.appendChild(resWrap);
@@ -931,15 +943,23 @@ function renderIcd(m) {
 // cả hai, không tự chọn hộ một cái rồi để người dùng đoán mình đang xem mốc nào.
 const WDAY = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 const pad2 = n => String(n).padStart(2, '0');
-const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
 const dmy = d => pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
-// Tự tách chuỗi rồi dựng Date theo giờ ĐỊA PHƯƠNG. new Date('2026-10-20') bị hiểu là
-// mốc UTC nên ở múi giờ âm sẽ lùi mất một ngày — sai lệch âm thầm, rất khó thấy.
-function parseYmd(v) {
-  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v || '').trim());
+// Đọc ngày người dùng gõ, theo thứ tự NGÀY/THÁNG/NĂM.
+//
+// Vì sao không dùng <input type="date"> nữa: nó hiển thị theo ngôn ngữ của TRÌNH DUYỆT,
+// không theo trang, và không có thuộc tính hay CSS nào ép được thứ tự. Máy cài tiếng Anh
+// sẽ hiện mm/dd/yyyy — 03/07 thành ngày 7 tháng 3 thay vì 3 tháng 7. Với ngày hẹn tái khám
+// thì đó là sai lệch 4 tháng mà nhìn không ra.
+//
+// Nhận cả dấu / - . và khoảng trắng; năm 2 chữ số hiểu là 20xx.
+function parseDmy(v) {
+  const m = /^(\d{1,2})\s*[\/\-. ]\s*(\d{1,2})\s*[\/\-. ]\s*(\d{2,4})$/.exec(String(v || '').trim());
   if (!m) return null;
-  const d = new Date(+m[1], +m[2] - 1, +m[3]);
-  return isNaN(d) || d.getMonth() !== +m[2] - 1 ? null : d;
+  const day = +m[1], mon = +m[2], yr = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+  const d = new Date(yr, mon - 1, day);
+  // Dựng xong phải kiểm lại: 31/02 sẽ tự trôi sang 03/03 chứ không báo lỗi.
+  if (d.getFullYear() !== yr || d.getMonth() !== mon - 1 || d.getDate() !== day) return null;
+  return d;
 }
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 // Làm tròn vì hai mốc nửa đêm có thể lệch 23 hay 25 giờ ở nơi có giờ mùa hè.
@@ -947,13 +967,14 @@ const dayGap = (a, b) => Math.round((b - a) / 86400000);
 
 function renderRecall(m) {
   const today = new Date();
-  if (!S.rcDate) S.rcDate = ymd(today);
+  if (!S.rcDate) S.rcDate = dmy(today);
 
   m.appendChild(el('div', {cls:'dtitle'}, el('span', {cls:'ic'}, '📅'),
     el('span', {}, el('h1', {}, 'Tính ngày tái khám'),
       el('div', {cls:'sub'}, 'Ngày khám + số ngày thuốc → ngày hẹn tái khám'))));
 
-  const dateIn = el('input', {type:'date', cls:'fi', value:S.rcDate});
+  const dateIn = el('input', {type:'text', cls:'fi', value:S.rcDate, inputmode:'numeric',
+    maxlength:'10', placeholder:'dd/mm/yyyy', autocomplete:'off'});
   const daysIn = el('input', {type:'number', cls:'fi', min:'1', step:'1',
     placeholder:'ví dụ 30', value:S.rcDays});
   const out = el('div', {});
@@ -967,11 +988,16 @@ function renderRecall(m) {
     // nhìn vào sẽ tưởng đang ở mốc khác.
     chips.forEach(c => c.b.className = 'chip' + (String(c.d) === String(daysIn.value) ? ' on' : ''));
     out.textContent = '';
-    const d0 = parseYmd(dateIn.value);
+    const d0 = parseDmy(dateIn.value);
     const n = Math.floor(Number(daysIn.value));
     const note = t => el('div', {cls:'card'}, el('div', {cls:'bd'},
       el('div', {style:'color:var(--ink3);font-size:12.8px'}, t)));
-    if (!d0) { out.appendChild(note('Chọn ngày khám để tính.')); return; }
+    if (!d0) {
+      out.appendChild(note(dateIn.value.trim()
+        ? 'Chưa đọc được “' + dateIn.value.trim() + '”. Ghi theo thứ tự ngày/tháng/năm, ví dụ ' + dmy(today) + '.'
+        : 'Nhập ngày khám theo thứ tự ngày/tháng/năm, ví dụ ' + dmy(today) + '.'));
+      return;
+    }
     if (!(n >= 1)) { out.appendChild(note('Nhập số ngày thuốc (từ 1 trở lên).')); return; }
 
     const last = addDays(d0, n - 1);
@@ -1010,11 +1036,11 @@ function renderRecall(m) {
   m.appendChild(el('div', {cls:'card'}, el('div', {cls:'bd'},
     el('div', {style:'display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end'},
       el('div', {cls:'frow', style:'margin-bottom:0;flex:1 1 190px'},
-        el('label', {}, 'Ngày khám'), dateIn),
+        el('label', {}, 'Ngày khám (ngày/tháng/năm)'), dateIn),
       el('div', {cls:'frow', style:'margin-bottom:0;flex:1 1 150px'},
         el('label', {}, 'Số ngày thuốc'), daysIn),
       el('button', {cls:'btn ghost', onclick:() => {
-        dateIn.value = ymd(new Date()); update();
+        dateIn.value = dmy(new Date()); update();
       }}, 'Hôm nay')),
     el('div', {cls:'chips', style:'margin-top:12px'}, QUICK.map(d => {
       const b = el('button', {cls:'chip',
