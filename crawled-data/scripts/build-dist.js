@@ -32,12 +32,26 @@ fs.mkdirSync(OUT, { recursive: true });
 fs.copyFileSync(src(HTML), dst(HTML));
 
 // File dữ liệu dùng chung, tạo sẵn để người dùng khỏi phải tự tạo: chỉ việc bấm nút rồi
-// trỏ vào nó. `savedAt: 0` là dấu "chưa ai ghi gì" — nhờ nó mà máy đã có sẵn Danh mục
-// khi nối vào sẽ ĐẨY dữ liệu lên file, chứ không bị file trống ghi đè mất.
-// Để `codes` rỗng và `seeded` rỗng thì mọi bộ mã tự nạp từ dữ liệu trong bản build,
-// nên file này không cần biết bản build có bao nhiêu bộ mã.
-fs.writeFileSync(dst('du-lieu-tra-cuu-duoc.json'), JSON.stringify(
-  { drugs: [], circulars: [], inters: [], seeded: [], codes: {}, savedAt: 0 }, null, 1));
+// trỏ vào nó.
+//
+// Có du-lieu-nap-san.json ở thư mục dự án thì dùng luôn (Danh mục đã nhập sẵn, dựng ra
+// bằng seed-datafile.js từ file Excel đã xuất). Không có thì tạo file trống.
+//
+// File trống mang `savedAt: 0` — dấu "chưa ai ghi gì". Nhờ nó mà máy đã có sẵn Danh mục
+// khi nối vào sẽ ĐẨY dữ liệu lên file chứ không bị ghi đè mất. File nạp sẵn thì ngược
+// lại, phải mang mốc thời gian THẬT, để máy trắng nối vào sẽ nhận dữ liệu về.
+const NAP_SAN = src('du-lieu-nap-san.json');
+if (fs.existsSync(NAP_SAN)) {
+  const o = JSON.parse(fs.readFileSync(NAP_SAN, 'utf8'));
+  if (!(+o.savedAt)) throw new Error('du-lieu-nap-san.json thiếu mốc savedAt thật — '
+    + 'máy trắng nối vào sẽ không nhận được dữ liệu');
+  fs.copyFileSync(NAP_SAN, dst('du-lieu-tra-cuu-duoc.json'));
+  console.log(`  (nạp sẵn ${(o.drugs || []).length} thuốc · ${(o.circulars || []).length} thông tư`
+    + ` · ${(o.inters || []).length} tương tác)`);
+} else {
+  fs.writeFileSync(dst('du-lieu-tra-cuu-duoc.json'), JSON.stringify(
+    { drugs: [], circulars: [], inters: [], seeded: [], codes: {}, savedAt: 0 }, null, 1));
+}
 
 const GUIDE = `TRA CỨU DƯỢC — HƯỚNG DẪN SỬ DỤNG
 ===================================================================
@@ -76,6 +90,8 @@ DÙNG CHUNG DỮ LIỆU GIỮA CÁC TRÌNH DUYỆT / CÁC MÁY
   Trong thư mục này đã có sẵn file:
 
        du-lieu-tra-cuu-duoc.json
+
+  File này ĐÃ CÓ SẴN Danh mục thuốc. Nối vào là thấy ngay, khỏi nhập lại.
 
   Cách dùng, làm y như nhau ở MỌI trình duyệt và MỌI máy:
 

@@ -35,3 +35,6 @@ kem.txt
 
 # Thư mục phát hành cho người dùng cuối — dựng lại bằng scripts/build-dist.js
 Tra cuu Duoc/
+
+# Dữ liệu nạp sẵn cho bản phát hành — của người dùng, không phải mã nguồn
+du-lieu-nap-san.json
