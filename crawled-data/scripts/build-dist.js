@@ -1,7 +1,8 @@
 // Gom thư mục phát hành: chép vào USB hay gửi cho đồng nghiệp là chạy được ngay.
 //
-//   otc-viewer.html   — toàn bộ ứng dụng, nháy đúp là chạy
-//   HUONG-DAN.txt     — dành cho người dùng cuối, không phải cho người lập trình
+//   otc-viewer.html               — toàn bộ ứng dụng, nháy đúp là chạy
+//   du-lieu-tra-cuu-duoc.json     — file trống để dùng chung dữ liệu giữa các trình duyệt
+//   HUONG-DAN.txt                 — cho người dùng cuối, không phải cho người lập trình
 //
 // Chỉ hai file. otc-viewer.html đã tự chứa mọi thứ — dữ liệu tra cứu, thư viện Excel,
 // bộ đọc chữ từ ảnh đều nhúng thẳng vào trong, nên không cần file kèm nào khác và
@@ -29,6 +30,14 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 fs.copyFileSync(src(HTML), dst(HTML));
+
+// File dữ liệu dùng chung, tạo sẵn để người dùng khỏi phải tự tạo: chỉ việc bấm nút rồi
+// trỏ vào nó. `savedAt: 0` là dấu "chưa ai ghi gì" — nhờ nó mà máy đã có sẵn Danh mục
+// khi nối vào sẽ ĐẨY dữ liệu lên file, chứ không bị file trống ghi đè mất.
+// Để `codes` rỗng và `seeded` rỗng thì mọi bộ mã tự nạp từ dữ liệu trong bản build,
+// nên file này không cần biết bản build có bao nhiêu bộ mã.
+fs.writeFileSync(dst('du-lieu-tra-cuu-duoc.json'), JSON.stringify(
+  { drugs: [], circulars: [], inters: [], seeded: [], codes: {}, savedAt: 0 }, null, 1));
 
 const GUIDE = `TRA CỨU DƯỢC — HƯỚNG DẪN SỬ DỤNG
 ===================================================================
@@ -64,16 +73,26 @@ DỮ LIỆU NẰM Ở ĐÂU
 
 DÙNG CHUNG DỮ LIỆU GIỮA CÁC TRÌNH DUYỆT / CÁC MÁY
 
-  Trên thanh tiêu đề có nút  🔗 Dùng chung dữ liệu
+  Trong thư mục này đã có sẵn file:
 
-  Lần đầu (máy/trình duyệt đầu tiên):
-     Bấm nút -> chọn "OK = TẠO FILE MỚI" -> đặt file ở chỗ dễ nhớ,
-     ví dụ Documents, hoặc OneDrive/Google Drive nếu muốn dùng chung
-     giữa nhiều máy. Xong. Từ giờ mọi thay đổi tự ghi vào file đó.
+       du-lieu-tra-cuu-duoc.json
 
-  Các trình duyệt / máy sau:
-     Bấm nút -> chọn "Cancel = MỞ FILE ĐÃ CÓ" -> trỏ đúng file vừa tạo.
-     Danh mục hiện ra ngay.
+  Cách dùng, làm y như nhau ở MỌI trình duyệt và MỌI máy:
+
+     1. Bấm nút  🔗 Dùng chung dữ liệu  trên thanh tiêu đề
+     2. Chọn "OK = MỞ FILE ĐÃ CÓ"
+     3. Trỏ vào du-lieu-tra-cuu-duoc.json nằm cạnh file otc-viewer.html
+
+  Xong. Từ đó mọi thay đổi tự ghi vào file, và trình duyệt nào trỏ vào
+  đúng file đó cũng thấy chung một Danh mục.
+
+  Làm một lần cho mỗi trình duyệt. Chrome làm một lần, Edge làm một lần.
+
+  Muốn dùng chung giữa NHIỀU MÁY thì để cả thư mục này trong OneDrive
+  hoặc Google Drive, rồi mỗi máy trỏ vào file trong đó.
+
+  Yên tâm: nếu bạn đã lỡ nhập Danh mục trước khi nối file, dữ liệu KHÔNG
+  mất. File trống sẽ nhận dữ liệu từ máy bạn chứ không xoá đi.
 
   Khi nút hiện màu VÀNG "Bấm để nối lại file dữ liệu":
      Bình thường. Mở lại trang thì trình duyệt hỏi lại cho chắc.

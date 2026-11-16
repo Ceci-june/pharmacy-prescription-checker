@@ -527,7 +527,7 @@ function udSave() {
 //
 // Safari và Firefox chưa có API này -> vẫn dùng Xuất/Nạp Excel như trước.
 const FS_OK = typeof window.showSaveFilePicker === 'function';
-const FS_NAME = 'du-lieu-tra-cuu-duoc.json';
+const FS_NAME = 'du-lieu-tra-cuu-duoc.json';   // trùng tên file đi kèm bản phát hành
 let fsHandle = null, fsTimer = null, fsPending = null;
 
 // Chỉ IndexedDB mới cất được "tay nắm" file; localStorage chỉ chứa được chuỗi.
@@ -577,11 +577,16 @@ async function fsSync() {
     const remote = txt ? JSON.parse(txt) : null;
     let local = null;
     try { local = JSON.parse(localStorage.getItem(LSKEY) || 'null'); } catch (e) {}
-    if (remote && (+remote.savedAt || 0) >= (+(local && local.savedAt) || 0)) {
+    // File đi kèm bản phát hành có savedAt = 0: file mới tinh, chưa ai ghi gì vào.
+    // Phải coi như rỗng và ĐẨY dữ liệu máy này lên, chứ lấy nó về là xoá sạch Danh mục
+    // của người đã nhập sẵn. Người dùng cố ý xoá hết thì savedAt vẫn là mốc thật, nên
+    // trường hợp đó vẫn đồng bộ bình thường.
+    const chuaAiGhi = !remote || !(+remote.savedAt);
+    if (!chuaAiGhi && (+remote.savedAt || 0) >= (+(local && local.savedAt) || 0)) {
       udFrom(remote, true);
       try { localStorage.setItem(LSKEY, JSON.stringify(remote)); lsOK = true; } catch (e) { lsOK = false; }
     } else {
-      // File rỗng (vừa tạo) hoặc cũ hơn -> đẩy dữ liệu máy này sang file.
+      // File mới tinh hoặc cũ hơn -> đẩy dữ liệu máy này sang file.
       fsPending = udPayload();
       await fsFlush();
     }
@@ -655,10 +660,14 @@ function fsMenu() {
     else fsUnlink();
     return;
   }
-  if (confirm('Chọn file dữ liệu dùng chung.\n\nOK = TẠO FILE MỚI (máy đầu tiên)\n'
-    + 'Cancel = MỞ FILE ĐÃ CÓ (các trình duyệt/máy sau)\n\n'
-    + 'Mẹo: để file trong Documents hoặc OneDrive, rồi ở trình duyệt khác chọn đúng file đó.')) fsPick(true);
-  else fsPick(false);
+  // Bản phát hành đã kèm sẵn du-lieu-tra-cuu-duoc.json, nên "mở file đã có" mới là
+  // đường thường dùng — để nó làm lựa chọn mặc định.
+  if (confirm('Chọn file dữ liệu dùng chung.\n\n'
+    + 'OK = MỞ FILE ĐÃ CÓ\n'
+    + 'chọn ' + FS_NAME + ' nằm cạnh file này.\n'
+    + 'Mọi trình duyệt và mọi máy đều trỏ vào đúng file đó.\n\n'
+    + 'Cancel = TẠO FILE MỚI ở chỗ khác')) fsPick(false);
+  else fsPick(true);
 }
 
 const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);

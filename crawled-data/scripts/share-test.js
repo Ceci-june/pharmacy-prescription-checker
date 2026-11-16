@@ -119,6 +119,39 @@ const FAKE = `(path) => {
   out.kichThuocFile = (disk['du-lieu.json'] || '').length;
   out.maTrongBoNhoVanDu = await A2.evaluate(() => (UD.codes.icd || []).length);
 
+  // ── File TRỐNG đi kèm bản phát hành không được xoá dữ liệu đã có ──
+  // Đây là cảnh mất dữ liệu dễ xảy ra nhất: người dùng nhập Danh mục xong mới bấm nối
+  // vào file trống có sẵn trong thư mục.
+  const TRONG = JSON.stringify({ drugs: [], circulars: [], inters: [], seeded: [], codes: {}, savedAt: 0 });
+  const D = await mo(await b.newContext(), { 'trong.json': TRONG });
+  await D.evaluate(() => {
+    UD.drugs.push({ id: 'k1', name: 'DANH MỤC TÔI ĐÃ NHẬP', ing: 'abc',
+                    icd: '', cls: '', ind: '', ci: '', dose: '', caut: '' });
+    udSave();
+  });
+  await D.evaluate(`fsHandle = (${FAKE})('trong.json')`);
+  await D.evaluate(() => fsSync());
+  await D.waitForTimeout(700);
+  out.fileTrongKhongXoaDuLieu = await D.evaluate(() => ({
+    conTrenMay: UD.drugs.map(d => d.name),
+    daDayLenFile: JSON.parse(window.__disk['trong.json'] || '{}').drugs.map(d => d.name),
+  }));
+
+  // ── Nhưng xoá hết CÓ CHỦ Ý thì vẫn phải đồng bộ sang máy kia ──
+  const XOA_HET = JSON.stringify({ drugs: [], circulars: [], inters: [],
+                                   seeded: ['icd', 'yhct', 'pl3'], codes: {}, savedAt: Date.now() });
+  const E = await mo(await b.newContext(), { 'xoa.json': XOA_HET });
+  await E.evaluate(() => {
+    UD.drugs.push({ id: 'k2', name: 'THUỐC CŨ CỦA MÁY NÀY', ing: 'abc',
+                    icd: '', cls: '', ind: '', ci: '', dose: '', caut: '' });
+    const o = JSON.parse(localStorage.getItem('gdd.userdata.v1') || '{}');
+    o.drugs = UD.drugs; o.savedAt = 1;        // máy này cũ hơn
+    localStorage.setItem('gdd.userdata.v1', JSON.stringify(o));
+  });
+  await E.evaluate(`fsHandle = (${FAKE})('xoa.json')`);
+  await E.evaluate(() => fsSync());
+  out.xoaCoChuYVanDongBo = await E.evaluate(() => UD.drugs.length);
+
   out.errors = errors;
   console.log(JSON.stringify(out, null, 1));
   await b.close();
