@@ -42,43 +42,57 @@ MỞ CHƯƠNG TRÌNH
   phần đọc tên thuốc từ ảnh đơn.
 
 
-DỮ LIỆU NẰM Ở ĐÂU — ĐỌC KỸ PHẦN NÀY
+DỮ LIỆU NẰM Ở ĐÂU
 
-  Có HAI loại dữ liệu, nằm hai chỗ khác nhau:
+  Có HAI loại, nằm hai chỗ khác nhau:
 
   1. DỮ LIỆU TRA CỨU — nằm NGAY TRONG file otc-viewer.html
      Mã ICD-10, YHCT, PL3, danh mục bệnh OTC, ngân hàng câu hỏi.
-     Đó là lý do file nặng gần 14 MB. Chép file đi đâu, dữ liệu này
-     đi theo đó. Máy mới, trình duyệt mới vẫn đầy đủ.
+     Đó là lý do file nặng gần 14 MB. Chép file đi đâu, phần này đi
+     theo đó. Máy mới, trình duyệt mới vẫn đầy đủ.
 
-  2. PHẦN BẠN TỰ NHẬP — KHÔNG nằm trong file
+  2. PHẦN BẠN TỰ NHẬP — mặc định KHÔNG nằm trong file
      Danh mục thuốc, Thông tư, Tương tác, các mã bạn sửa hoặc thêm.
      Trình duyệt giữ riêng trên máy đó, bên ngoài file.
 
-  Nói cách khác: file là chương trình, không phải nơi chứa phần bạn gõ.
+  Mỗi trình duyệt giữ một kho riêng, không nhìn thấy nhau. Nhập bằng
+  Chrome thì mở bằng Edge sẽ không thấy. Đây là cách trình duyệt hoạt
+  động, không phải lỗi.
+
+  => Muốn các trình duyệt thấy chung, xem mục ngay dưới đây.
 
 
-  => PHẦN BẠN TỰ NHẬP CÒN HAY MẤT:
+DÙNG CHUNG DỮ LIỆU GIỮA CÁC TRÌNH DUYỆT / CÁC MÁY
 
-     Đổi tên file, chuyển sang thư mục khác,
-     chép sang ổ D, để lên Desktop             -> CÒN
-     (cùng máy, cùng trình duyệt)
+  Trên thanh tiêu đề có nút  🔗 Dùng chung dữ liệu
 
-     Mở bằng trình duyệt khác trên cùng máy
-     (nhập bằng Chrome, mở bằng Edge)          -> KHÔNG THẤY
+  Lần đầu (máy/trình duyệt đầu tiên):
+     Bấm nút -> chọn "OK = TẠO FILE MỚI" -> đặt file ở chỗ dễ nhớ,
+     ví dụ Documents, hoặc OneDrive/Google Drive nếu muốn dùng chung
+     giữa nhiều máy. Xong. Từ giờ mọi thay đổi tự ghi vào file đó.
 
-     Chép file sang máy khác                   -> MẤT
-     Xoá lịch sử duyệt web / Clear browsing
-     data / dọn máy bằng CCleaner              -> MẤT
-     Mở bằng chế độ ẩn danh                    -> KHÔNG LƯU
+  Các trình duyệt / máy sau:
+     Bấm nút -> chọn "Cancel = MỞ FILE ĐÃ CÓ" -> trỏ đúng file vừa tạo.
+     Danh mục hiện ra ngay.
+
+  Khi nút hiện màu VÀNG "Bấm để nối lại file dữ liệu":
+     Bình thường. Mở lại trang thì trình duyệt hỏi lại cho chắc.
+     Bấm một cái là xong, dữ liệu không mất đi đâu.
+
+  Lưu ý: Chrome, Edge, Cốc Cốc dùng được chức năng này.
+         Safari và Firefox chưa hỗ trợ — hai trình duyệt đó vẫn phải
+         dùng Xuất/Nạp Excel như bên dưới.
+
+  Sửa cùng lúc ở hai nơi thì bên nào BẤM LƯU SAU sẽ thắng. Nên tránh
+  mở sửa song song hai chỗ cùng một lúc.
 
 
-GIỮ AN TOÀN PHẦN BẠN NHẬP
+VẪN NÊN XUẤT EXCEL ĐỂ SAO LƯU
 
-  Nhập xong thì bấm "Xuất Excel" và cất file đó lại.
-  Máy mới, hoặc lỡ mất dữ liệu, thì bấm "Nạp từ Excel".
+  Nút "Xuất Excel" trong tab Danh mục tạo một bản sao thật, mở được
+  bằng Excel, không phụ thuộc trình duyệt hay file dùng chung.
+  Mất dữ liệu thì bấm "Nạp từ Excel" để lấy lại.
 
-  Đây là cách DUY NHẤT chắc chắn. Đừng trông vào trình duyệt nhớ giùm.
   Nên xuất lại mỗi lần nhập thêm kha khá.
 
 

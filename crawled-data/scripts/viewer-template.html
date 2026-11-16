@@ -26,6 +26,10 @@ input{font:inherit}
 #shell{display:grid;grid-template-columns:270px 1fr;grid-template-rows:52px 1fr;height:100vh}
 header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--accent);color:#eef5f3}
 header .ver{font-size:11.5px;opacity:.68;font-family:var(--mono)}
+/* Trạng thái dùng chung dữ liệu — để trên thanh tiêu đề cho mọi tab đều thấy. */
+.fsbtn{font-size:11.5px;font-weight:650;white-space:nowrap}
+.fsbtn.ok{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.34)}
+.fsbtn.warn{background:#f0b429;border-color:#d9a21b;color:#3a2c00}
 header .sp{margin-left:auto}
 header button{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:600}
 header button:hover{background:rgba(255,255,255,.24)}
@@ -334,6 +338,7 @@ textarea.fi{resize:vertical;line-height:1.55}
       <button class="tab" data-tab="otc">OTC Data</button>
     </span>
     <span class="sp"></span>
+    <button id="fsbtn" class="fsbtn" style="display:none"></button>
     <span class="ver" id="ver"></span>
     <button id="btnIndex">Tra cứu dược lý</button>
     <button id="btnAbout">Về bản dữ liệu</button>
@@ -392,7 +397,7 @@ const ALIAS = {liver:'suygan',kidney:'suythan',cvd:'htn',bf:'bfeed'};
 // Bank quiz "dyspepsia" thực chất thuộc bệnh indigestion (app gốc tra theo id nên bỏ sót).
 const QUIZ_ALIAS = {indigestion:'dyspepsia'};
 
-let S = {tab:'catalog', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', icdChap:'', icdStat:'', rxAck:'', exp:{}, sel:{},
+let S = {fsState:'none', tab:'catalog', id:null, group:'adult', syms:[], q:'', page:'disease', dq:'', cq:'', tq:'', iq:'', xq:'', xsel:null, codeSet:'icd', icdChap:'', icdStat:'', rxAck:'', exp:{}, sel:{},
   rxImg:null, rxItems:[], rxq:'', rxZoom:false, rcDate:'', rcDays:''};
 
 // ── Dữ liệu người dùng tự nhập (Danh mục + Thông tư) ──────────────────
@@ -455,31 +460,37 @@ function migrateCodes(key, arr) {
   return out.concat(seed.filter(r => !used.has(r.id)));
 }
 
+// Dựng UD từ một gói dữ liệu đã lưu (lấy từ localStorage hay từ file dùng chung đều được).
+function udFrom(o, coGoi) {
+  if (coGoi) {
+    UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
+    const stored = o.codes || {};
+    // Bản cũ lưu ICD ở UD.icd — chuyển sang UD.codes.icd, giữ nguyên mọi sửa đổi.
+    if (!stored.icd && o.icd) stored.icd = o.icd;
+    UD.codes = {};
+    for (const k in stored) {
+      // Mảng = định dạng cũ (lưu nguyên danh sách). Object = định dạng phần khác.
+      UD.codes[k] = Array.isArray(stored[k])
+        ? migrateCodes(k, stored[k]) : codesFromDiff(k, stored[k] || {});
+    }
+  } else {
+    UD.drugs = []; UD.circulars = []; UD.inters = []; UD.codes = {};
+  }
+  // `seeded` ghi lại những bộ ĐÃ từng được nạp sẵn. Nhờ nó phân biệt được hai cảnh
+  // khác hẳn nhau mà cùng cho mảng rỗng: người dùng cố tình xoá sạch một bộ (phải
+  // để yên), và bản cũ lưu [] vì bản build khi đó chưa kèm dữ liệu bộ đó (phải nạp).
+  UD.seeded = Array.isArray(o.seeded) ? o.seeded.slice() : (o.codes ? ['icd'] : []);
+  for (const c of CODE_SETS) {
+    if (UD.codes[c.key] && (UD.codes[c.key].length || UD.seeded.includes(c.key))) continue;
+    UD.codes[c.key] = seedCodes(c.key);
+    if (!UD.seeded.includes(c.key)) UD.seeded.push(c.key);
+  }
+}
+
 function udLoad() {
   try {
     const raw = localStorage.getItem(LSKEY);
-    const o = raw ? (JSON.parse(raw) || {}) : {};
-    if (raw) {
-      UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
-      const stored = o.codes || {};
-      // Bản cũ lưu ICD ở UD.icd — chuyển sang UD.codes.icd, giữ nguyên mọi sửa đổi.
-      if (!stored.icd && o.icd) stored.icd = o.icd;
-      UD.codes = {};
-      for (const k in stored) {
-        // Mảng = định dạng cũ (lưu nguyên danh sách). Object = định dạng phần khác.
-        UD.codes[k] = Array.isArray(stored[k])
-          ? migrateCodes(k, stored[k]) : codesFromDiff(k, stored[k] || {});
-      }
-    }
-    // `seeded` ghi lại những bộ ĐÃ từng được nạp sẵn. Nhờ nó phân biệt được hai cảnh
-    // khác hẳn nhau mà cùng cho mảng rỗng: người dùng cố tình xoá sạch một bộ (phải
-    // để yên), và bản cũ lưu [] vì bản build khi đó chưa kèm dữ liệu bộ đó (phải nạp).
-    UD.seeded = Array.isArray(o.seeded) ? o.seeded.slice() : (o.codes ? ['icd'] : []);
-    for (const c of CODE_SETS) {
-      if (UD.codes[c.key] && (UD.codes[c.key].length || UD.seeded.includes(c.key))) continue;
-      UD.codes[c.key] = seedCodes(c.key);
-      if (!UD.seeded.includes(c.key)) UD.seeded.push(c.key);
-    }
+    udFrom(raw ? (JSON.parse(raw) || {}) : {}, !!raw);
   } catch (e) { lsOK = false; return; }
   // Bản cũ tách "Liều dùng" và "Độ tuổi áp dụng" thành 2 trường — nối lại thành 1.
   let moved = 0;
@@ -491,15 +502,165 @@ function udLoad() {
   }
   if (moved) udSave();
 }
-function udSave() {
-  try {
-    const payload = { drugs:UD.drugs, circulars:UD.circulars, inters:UD.inters,
-                      seeded:UD.seeded, codes:{} };
-    for (const k in UD.codes) payload.codes[k] = codesDiff(k, UD.codes[k] || []);
-    localStorage.setItem(LSKEY, JSON.stringify(payload));
-    lsOK = true;
-  } catch (e) { lsOK = false; }
+// Gói dữ liệu để lưu. `savedAt` dùng để so bên nào mới hơn khi đồng bộ với file chung.
+function udPayload() {
+  const p = { drugs:UD.drugs, circulars:UD.circulars, inters:UD.inters,
+              seeded:UD.seeded, codes:{}, savedAt:Date.now() };
+  for (const k in UD.codes) p.codes[k] = codesDiff(k, UD.codes[k] || []);
+  return p;
 }
+function udSave() {
+  const payload = udPayload();
+  try { localStorage.setItem(LSKEY, JSON.stringify(payload)); lsOK = true; }
+  catch (e) { lsOK = false; }
+  fsWrite(payload);   // nếu đã nối file dùng chung thì ghi luôn sang đó
+}
+// ── Dùng chung dữ liệu giữa các trình duyệt ─────────────────────────────
+// localStorage của Chrome và của Edge là HAI KHO TÁCH BIỆT; không API web nào nối được
+// chúng. Muốn hai trình duyệt trên cùng máy thấy cùng một Danh mục thì dữ liệu phải nằm
+// ở một FILE THẬT trên đĩa, ngoài trình duyệt.
+//
+// File System Access API làm được đúng việc đó và chạy được cả trên file:// (đã đo:
+// isSecureContext = true, showSaveFilePicker mở được hộp thoại thật). Người dùng chọn
+// file MỘT LẦN cho mỗi trình duyệt; sau đó mọi thay đổi tự ghi sang file, và mở ở
+// trình duyệt kia sẽ đọc lại từ chính file đó.
+//
+// Safari và Firefox chưa có API này -> vẫn dùng Xuất/Nạp Excel như trước.
+const FS_OK = typeof window.showSaveFilePicker === 'function';
+const FS_NAME = 'du-lieu-tra-cuu-duoc.json';
+let fsHandle = null, fsTimer = null, fsPending = null;
+
+// Chỉ IndexedDB mới cất được "tay nắm" file; localStorage chỉ chứa được chuỗi.
+// Tay nắm này riêng từng trình duyệt, nên mỗi trình duyệt phải chọn file một lần.
+function fsIdb(mode, fn) {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open('gdd.fs', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('handles');
+    q.onerror = () => rej(q.error);
+    q.onsuccess = () => {
+      const db = q.result;
+      const tx = db.transaction('handles', mode);
+      const r = fn(tx.objectStore('handles'));
+      tx.oncomplete = () => { db.close(); res(r && r.result); };
+      tx.onerror = () => { db.close(); rej(tx.error); };
+    };
+  });
+}
+
+async function fsFlush() {
+  if (!fsHandle || !fsPending) return;
+  const data = fsPending; fsPending = null;
+  try {
+    const w = await fsHandle.createWritable();
+    await w.write(JSON.stringify(data));
+    await w.close();
+    S.fsState = 'ready';
+  } catch (e) {
+    // Mất quyền (mở lại trang, hoặc người dùng đổi chỗ file) — báo để bấm nối lại,
+    // KHÔNG chặn thao tác: localStorage vẫn giữ được dữ liệu.
+    S.fsState = 'need';
+  }
+  fsBadge();
+}
+// Gộp nhiều lần lưu liên tiếp lại: nhập hàng loạt thì khỏi ghi đĩa từng dòng một.
+function fsWrite(payload) {
+  if (!fsHandle) return;
+  fsPending = payload;
+  clearTimeout(fsTimer);
+  fsTimer = setTimeout(fsFlush, 400);
+}
+
+// Nối xong thì quyết bên nào thắng: bên nào lưu SAU thì bên đó đúng.
+async function fsSync() {
+  try {
+    const txt = (await (await fsHandle.getFile()).text()).trim();
+    const remote = txt ? JSON.parse(txt) : null;
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(LSKEY) || 'null'); } catch (e) {}
+    if (remote && (+remote.savedAt || 0) >= (+(local && local.savedAt) || 0)) {
+      udFrom(remote, true);
+      try { localStorage.setItem(LSKEY, JSON.stringify(remote)); lsOK = true; } catch (e) { lsOK = false; }
+    } else {
+      // File rỗng (vừa tạo) hoặc cũ hơn -> đẩy dữ liệu máy này sang file.
+      fsPending = udPayload();
+      await fsFlush();
+    }
+    S.fsState = 'ready';
+  } catch (e) { S.fsState = 'need'; }
+  fsBadge();
+  renderMain();
+}
+
+// Chọn file dùng chung. Mở file sẵn có thì chọn "mở"; chưa có thì tạo mới.
+async function fsPick(taoMoi) {
+  try {
+    const h = taoMoi
+      ? await window.showSaveFilePicker({ suggestedName: FS_NAME,
+          types: [{ description: 'Dữ liệu Tra cứu Dược', accept: { 'application/json': ['.json'] } }] })
+      : (await window.showOpenFilePicker({ multiple: false,
+          types: [{ description: 'Dữ liệu Tra cứu Dược', accept: { 'application/json': ['.json'] } }] }))[0];
+    if (!h) return;
+    if ((await h.requestPermission({ mode: 'readwrite' })) !== 'granted') return;
+    fsHandle = h;
+    try { await fsIdb('readwrite', st => st.put(h, 'datafile')); } catch (e) {}
+    await fsSync();
+  } catch (e) {
+    if (e && e.name !== 'AbortError') alert('Không nối được file dữ liệu: ' + (e.message || e));
+  }
+}
+
+async function fsUnlink() {
+  if (!confirm('Thôi dùng chung file dữ liệu?\n\nDữ liệu trên máy này vẫn còn, chỉ là không ghi sang file nữa.')) return;
+  fsHandle = null; S.fsState = 'none';
+  try { await fsIdb('readwrite', st => st.delete('datafile')); } catch (e) {}
+  fsBadge();
+}
+
+async function fsInit() {
+  if (!FS_OK) { S.fsState = 'off'; fsBadge(); return; }
+  let h = null;
+  try { h = await fsIdb('readonly', st => st.get('datafile')); } catch (e) {}
+  if (!h) { S.fsState = 'none'; fsBadge(); return; }
+  fsHandle = h;
+  try {
+    // Mở lại trang thì trình duyệt thường đòi xác nhận lại; phải có cú bấm của người
+    // dùng mới xin được quyền, nên ở đây chỉ HỎI trạng thái chứ không xin.
+    if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') await fsSync();
+    else { S.fsState = 'need'; fsBadge(); }
+  } catch (e) { S.fsState = 'need'; fsBadge(); }
+}
+
+// Nút trạng thái trên thanh tiêu đề — luôn nhìn thấy ở mọi tab.
+function fsBadge() {
+  const n = document.getElementById('fsbtn');
+  if (!n) return;
+  const st = S.fsState || 'none';
+  if (st === 'off') { n.style.display = 'none'; return; }
+  n.style.display = '';
+  n.className = 'fsbtn' + (st === 'ready' ? ' ok' : st === 'need' ? ' warn' : '');
+  n.textContent = st === 'ready' ? '🔗 Dùng chung: bật'
+    : st === 'need' ? '🔗 Bấm để nối lại file dữ liệu'
+    : '🔗 Dùng chung dữ liệu';
+  n.title = st === 'ready'
+    ? 'Mọi thay đổi đang được ghi sang file dùng chung. Bấm để xem tuỳ chọn.'
+    : st === 'need'
+      ? 'Đã nối file nhưng trình duyệt cần bạn xác nhận lại. Bấm để nối lại.'
+      : 'Chưa dùng chung. Bấm để chọn file, rồi mở cùng file đó ở trình duyệt khác.';
+}
+
+function fsMenu() {
+  if (S.fsState === 'need') { fsPick(false); return; }
+  if (S.fsState === 'ready') {
+    if (confirm('Đang dùng chung dữ liệu qua file.\n\nOK = chọn file khác\nCancel = thôi dùng chung')) fsPick(false);
+    else fsUnlink();
+    return;
+  }
+  if (confirm('Chọn file dữ liệu dùng chung.\n\nOK = TẠO FILE MỚI (máy đầu tiên)\n'
+    + 'Cancel = MỞ FILE ĐÃ CÓ (các trình duyệt/máy sau)\n\n'
+    + 'Mẹo: để file trong Documents hoặc OneDrive, rồi ở trình duyệt khác chọn đúng file đó.')) fsPick(true);
+  else fsPick(false);
+}
+
 const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 const DRUG_FIELDS = [
@@ -2239,6 +2400,8 @@ document.getElementById('tabs').addEventListener('click', e => {
   S.tab = b.dataset.tab;
   renderMain(); document.getElementById('main').scrollTop = 0;
 });
+document.getElementById('fsbtn').onclick = fsMenu;
+fsInit();
 document.getElementById('btnIndex').onclick = () => {
   S.page = S.page === 'index' ? 'disease' : 'index';
   renderMain(); document.getElementById('main').scrollTop = 0;
