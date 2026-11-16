@@ -32,3 +32,6 @@ crawled-data/README.md
 # Tải lại từ datafiles.chinhphu.vn khi cần; không nhét 47 MB vào repo.
 06-byt-kem.pdf
 kem.txt
+
+# Thư mục phát hành cho người dùng cuối — dựng lại bằng scripts/build-dist.js
+Tra cuu Duoc/
