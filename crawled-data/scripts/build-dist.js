@@ -1,15 +1,11 @@
 // Gom thư mục phát hành: chép vào USB hay gửi cho đồng nghiệp là chạy được ngay.
 //
-// otc-viewer.html đã tự chứa mọi thứ (dữ liệu, SheetJS, bộ OCR đều nhúng sẵn), nên về
-// lý thuyết chỉ cần mỗi nó. Thư mục này thêm hai cái mở nhanh và một tờ hướng dẫn:
+//   otc-viewer.html   — toàn bộ ứng dụng, nháy đúp là chạy
+//   HUONG-DAN.txt     — dành cho người dùng cuối, không phải cho người lập trình
 //
-//   otc-viewer.html        — toàn bộ ứng dụng, mở bằng trình duyệt nào cũng được
-//   OTC Tool.app           — macOS: mở trong cửa sổ riêng, không thanh địa chỉ
-//   OTC-Tool-Windows.bat   — Windows: y hệt, bằng Edge hoặc Chrome
-//   HUONG-DAN.txt          — dành cho người dùng cuối, không phải cho người lập trình
-//
-// Hai file mở nhanh đều tìm otc-viewer.html NGAY CẠNH chúng, nên cả bốn phải nằm cùng
-// một thư mục và không được đổi tên file html.
+// Chỉ hai file. otc-viewer.html đã tự chứa mọi thứ — dữ liệu tra cứu, thư viện Excel,
+// bộ đọc chữ từ ảnh đều nhúng thẳng vào trong, nên không cần file kèm nào khác và
+// không cần mạng.
 const fs = require('fs');
 const path = require('path');
 
@@ -33,56 +29,57 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 fs.copyFileSync(src(HTML), dst(HTML));
-// cpSync giữ nguyên quyền thực thi của OTC Tool.app/Contents/MacOS/otc-tool —
-// mất bit đó thì macOS báo "ứng dụng bị hỏng" chứ không nói là thiếu quyền.
-for (const name of ['OTC Tool.app', 'OTC-Tool-Windows.bat']) {
-  if (fs.existsSync(src(name))) fs.cpSync(src(name), dst(name), { recursive: true });
-  else console.warn(`  (bỏ qua ${name} — không có trong thư mục dự án)`);
-}
 
 const GUIDE = `TRA CỨU DƯỢC — HƯỚNG DẪN SỬ DỤNG
 ===================================================================
 
 MỞ CHƯƠNG TRÌNH
 
-  Windows   nháy đúp  OTC-Tool-Windows.bat
-  macOS     nháy đúp  OTC Tool.app
+  Nháy đúp vào file  otc-viewer.html
 
-  Không mở được bằng hai cách trên thì nháy đúp thẳng vào otc-viewer.html,
-  nó sẽ mở bằng trình duyệt mặc định. Dùng được như nhau, chỉ khác là có
-  thêm thanh địa chỉ của trình duyệt.
-
-
-KHÔNG CẦN CÀI ĐẶT, KHÔNG CẦN MẠNG
-
-  Toàn bộ dữ liệu nằm sẵn trong file otc-viewer.html. Chương trình chạy
-  hoàn toàn trên máy bạn, không gửi gì ra ngoài, rút mạng vẫn chạy bình
-  thường. Kể cả phần đọc tên thuốc từ ảnh đơn cũng chạy ngay trên máy.
+  Nó mở bằng trình duyệt có sẵn (Chrome, Edge, Safari, Cốc Cốc...).
+  Không cần cài gì, không cần mạng. Rút dây mạng vẫn chạy đủ, kể cả
+  phần đọc tên thuốc từ ảnh đơn.
 
 
-ĐỪNG ĐỔI TÊN FILE
+DỮ LIỆU NẰM Ở ĐÂU — ĐỌC KỸ PHẦN NÀY
 
-  Hai file mở nhanh đi tìm đúng cái tên "otc-viewer.html" nằm cùng thư
-  mục. Đổi tên nó, hoặc tách nó ra thư mục khác, là chúng báo không tìm
-  thấy. Muốn chép đi nơi khác thì chép CẢ THƯ MỤC này.
+  Có HAI loại dữ liệu, nằm hai chỗ khác nhau:
+
+  1. DỮ LIỆU TRA CỨU — nằm NGAY TRONG file otc-viewer.html
+     Mã ICD-10, YHCT, PL3, danh mục bệnh OTC, ngân hàng câu hỏi.
+     Đó là lý do file nặng gần 14 MB. Chép file đi đâu, dữ liệu này
+     đi theo đó. Máy mới, trình duyệt mới vẫn đầy đủ.
+
+  2. PHẦN BẠN TỰ NHẬP — KHÔNG nằm trong file
+     Danh mục thuốc, Thông tư, Tương tác, các mã bạn sửa hoặc thêm.
+     Trình duyệt giữ riêng trên máy đó, bên ngoài file.
+
+  Nói cách khác: file là chương trình, không phải nơi chứa phần bạn gõ.
 
 
-DỮ LIỆU BẠN TỰ NHẬP ĐƯỢC LƯU Ở ĐÂU
+  => PHẦN BẠN TỰ NHẬP CÒN HAY MẤT:
 
-  Danh mục thuốc, Thông tư, Tương tác và các mã bạn sửa được trình duyệt
-  lưu lại trên CHÍNH MÁY ĐÓ. Mở lại lần sau vẫn còn.
+     Đổi tên file, chuyển sang thư mục khác,
+     chép sang ổ D, để lên Desktop             -> CÒN
+     (cùng máy, cùng trình duyệt)
 
-  Nhưng phải biết ba điều này:
+     Mở bằng trình duyệt khác trên cùng máy
+     (nhập bằng Chrome, mở bằng Edge)          -> KHÔNG THẤY
 
-  1. Chép thư mục sang máy khác thì KHÔNG mang dữ liệu theo. Chỉ có file
-     chương trình đi theo, phần bạn nhập thì không.
-  2. Xoá lịch sử duyệt web / "Clear browsing data" có thể xoá luôn phần
-     bạn đã nhập.
-  3. Mỗi trình duyệt giữ một bản riêng. Nhập bằng Chrome thì mở bằng Edge
-     sẽ không thấy.
+     Chép file sang máy khác                   -> MẤT
+     Xoá lịch sử duyệt web / Clear browsing
+     data / dọn máy bằng CCleaner              -> MẤT
+     Mở bằng chế độ ẩn danh                    -> KHÔNG LƯU
 
-  => Nhập xong, bấm "Xuất Excel" để giữ một bản sao thật. Sang máy mới thì
-     bấm "Nạp từ Excel". Đây là cách duy nhất chắc chắn không mất.
+
+GIỮ AN TOÀN PHẦN BẠN NHẬP
+
+  Nhập xong thì bấm "Xuất Excel" và cất file đó lại.
+  Máy mới, hoặc lỡ mất dữ liệu, thì bấm "Nạp từ Excel".
+
+  Đây là cách DUY NHẤT chắc chắn. Đừng trông vào trình duyệt nhớ giùm.
+  Nên xuất lại mỗi lần nhập thêm kha khá.
 
 
 VÀI ĐIỀU NÊN BIẾT
