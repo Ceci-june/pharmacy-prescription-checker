@@ -16,6 +16,11 @@ const FILE = process.argv[2] || 'file:///Users/vy/Desktop/Personal/Giaidapduoc/o
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'gdd-share-'));
 const DATA = path.join(DIR, 'du-lieu.json');
 const out = {};
+// Bản lưu nay chỉ ghi PHẦN KHÁC so với dữ liệu nạp sẵn trong bản build: thuốc tự thêm
+// nằm ở `add`, không còn là cả danh sách.
+const demThem = v => Array.isArray(v) ? v.length : (((v || {}).add) || []).length;
+// Trong trang: dòng nạp sẵn mang id "drugs#12", dòng tự thêm mang id ngẫu nhiên.
+const TU_THEM = `(arr) => arr.filter(r => !/^[a-z0-9]+#\\d+$/.test(String(r.id || ''))).map(r => r.name)`;
 
 // Tay nắm file giả, đủ dùng cho fsSync/fsFlush: getFile + createWritable + quyền.
 const FAKE = `(path) => {
@@ -70,21 +75,21 @@ const FAKE = `(path) => {
   out.fileDaGhi = !!disk['du-lieu.json'];
   out.fileChua = (() => {
     const o = JSON.parse(disk['du-lieu.json'] || '{}');
-    return { soThuoc: (o.drugs || []).length, soThongTu: (o.circulars || []).length, coMocThoiGian: !!o.savedAt };
+    return { soThuoc: demThem(o.drugs), soThongTu: demThem(o.circulars), coMocThoiGian: !!o.savedAt };
   })();
 
   // ── Trình duyệt B: hồ sơ mới toanh, nối cùng file ──
   const ctxB = await b.newContext();
   const B = await mo(ctxB, disk);
-  out.B_truocKhiNoi = await B.evaluate(() => ({
-    soThuoc: UD.drugs.length, soThongTu: UD.circulars.length,
-  }));
+  out.B_truocKhiNoi = await B.evaluate(`({
+    thuocTuThem: (${TU_THEM})(UD.drugs), thongTuTuThem: (${TU_THEM})(UD.circulars),
+  })`);
   await B.evaluate(`fsHandle = (${FAKE})('du-lieu.json')`);
   await B.evaluate(() => fsSync());
-  out.B_sauKhiNoi = await B.evaluate(() => ({
-    soThuoc: UD.drugs.length, tenThuoc: (UD.drugs[0] || {}).name,
-    soThongTu: UD.circulars.length, trangThai: S.fsState,
-  }));
+  out.B_sauKhiNoi = await B.evaluate(`({
+    thuocTuThem: (${TU_THEM})(UD.drugs), thongTuTuThem: (${TU_THEM})(UD.circulars),
+    tongDanhMuc: UD.drugs.length, trangThai: S.fsState,
+  })`);
 
   // ── B sửa tiếp, A mở lại phải thấy ──
   await B.evaluate(() => {
@@ -98,9 +103,9 @@ const FAKE = `(path) => {
   const A2 = await mo(await b.newContext(), disk);
   await A2.evaluate(`fsHandle = (${FAKE})('du-lieu.json')`);
   await A2.evaluate(() => fsSync());
-  out.A_moLaiThayCuaB = await A2.evaluate(() => ({
-    soThuoc: UD.drugs.length, ten: UD.drugs.map(d => d.name).sort(),
-  }));
+  out.A_moLaiThayCuaB = await A2.evaluate(`({
+    thuocTuThem: (${TU_THEM})(UD.drugs).sort(), tongDanhMuc: UD.drugs.length,
+  })`);
 
   // ── Bên nào lưu SAU thì bên đó thắng, không phải bên nào nối sau ──
   const C = await mo(await b.newContext(), disk);
@@ -113,7 +118,7 @@ const FAKE = `(path) => {
   await C.reload();
   await C.evaluate(`fsHandle = (${FAKE})('du-lieu.json')`);
   await C.evaluate(() => fsSync());
-  out.fileMoiHonThiThangLocal = await C.evaluate(() => UD.drugs.map(d => d.name).sort());
+  out.fileMoiHonThiThangLocal = await C.evaluate(`(${TU_THEM})(UD.drugs).sort()`);
 
   // mã tham chiếu không được chui vào file dùng chung
   out.kichThuocFile = (disk['du-lieu.json'] || '').length;
@@ -132,14 +137,18 @@ const FAKE = `(path) => {
   await D.evaluate(`fsHandle = (${FAKE})('trong.json')`);
   await D.evaluate(() => fsSync());
   await D.waitForTimeout(700);
-  out.fileTrongKhongXoaDuLieu = await D.evaluate(() => ({
-    conTrenMay: UD.drugs.map(d => d.name),
-    daDayLenFile: JSON.parse(window.__disk['trong.json'] || '{}').drugs.map(d => d.name),
-  }));
+  out.fileTrongKhongXoaDuLieu = await D.evaluate(`({
+    conTrenMay: (${TU_THEM})(UD.drugs),
+    daDayLenFile: (JSON.parse(window.__disk['trong.json'] || '{}').drugs || {}).add.map(d => d.name),
+  })`);
 
   // ── Nhưng xoá hết CÓ CHỦ Ý thì vẫn phải đồng bộ sang máy kia ──
-  const XOA_HET = JSON.stringify({ drugs: [], circulars: [], inters: [],
-                                   seeded: ['icd', 'yhct', 'pl3'], codes: {}, savedAt: Date.now() });
+  const E0 = await mo(await b.newContext(), {});
+  const XOA_HET = await E0.evaluate(() => {
+    UD.drugs = []; UD.circulars = []; UD.inters = [];
+    const p = udPayload(); p.savedAt = Date.now();
+    return JSON.stringify(p);
+  });
   const E = await mo(await b.newContext(), { 'xoa.json': XOA_HET });
   await E.evaluate(() => {
     UD.drugs.push({ id: 'k2', name: 'THUỐC CŨ CỦA MÁY NÀY', ing: 'abc',
@@ -150,7 +159,7 @@ const FAKE = `(path) => {
   });
   await E.evaluate(`fsHandle = (${FAKE})('xoa.json')`);
   await E.evaluate(() => fsSync());
-  out.xoaCoChuYVanDongBo = await E.evaluate(() => UD.drugs.length);
+  out.xoaCoChuYVanDongBo = await E.evaluate(() => UD.drugs.length);   // phải là 0
 
   out.errors = errors;
   console.log(JSON.stringify(out, null, 1));

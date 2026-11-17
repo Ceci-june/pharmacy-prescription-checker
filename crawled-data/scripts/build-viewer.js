@@ -20,6 +20,33 @@ const data = {
   pl3: load('pl3'),          // PL3 thuốc/hóa chất gây ngộ độc → yhoc-to-json.js
 };
 
+// Danh mục / Thông tư / Tương tác nạp sẵn (userseed.json, dựng bằng seed-userdata.js từ
+// file Excel đã xuất). Nhúng thẳng vào bản build để MỞ HTML LÀ THẤY, khỏi phải nối file
+// dùng chung trước. Không có file này thì vẫn build được, chỉ là Danh mục rỗng.
+const SEED = path.join(DIR, 'userseed.json');
+if (fs.existsSync(SEED)) {
+  const us = JSON.parse(fs.readFileSync(SEED, 'utf8'));
+  data.userSeed = { drugs: us.drugs || [], circulars: us.circulars || [], inters: us.inters || [] };
+
+  // Người dùng có chú thích thêm vào tên một số mã ICD (ví dụ thêm "(CTM,NS1)"). Áp thẳng
+  // lên dữ liệu tham chiếu nhúng sẵn, để chữ của họ còn nguyên mà không đẻ ra mã trùng.
+  const sua = us.codeEdits && us.codeEdits.icd || [];
+  const bare = c => String(c || '').replace(/[†*]/g, '').toUpperCase().trim();
+  const theoMa = new Map(data.icd10.map(r => [bare(r.code), r]));
+  let ap = 0, truot = 0;
+  for (const e of sua) {
+    const r = theoMa.get(bare(e.code));
+    if (!r) { truot++; continue; }
+    if (e.dx) r.dx = e.dx;
+    if (e.note) r.note = e.note;
+    ap++;
+  }
+  if (truot) throw new Error(`${truot} chú thích ICD không khớp mã nào trong bản build`);
+  console.log(`  nạp sẵn: ${data.userSeed.drugs.length} thuốc · `
+    + `${data.userSeed.circulars.length} thông tư · ${data.userSeed.inters.length} tương tác`
+    + ` · ${ap} chú thích ICD`);
+}
+
 // `</script>` and the U+2028/9 line separators would break the inline script tag.
 const json = JSON.stringify(data)
   .replace(/</g, '\\u003c')

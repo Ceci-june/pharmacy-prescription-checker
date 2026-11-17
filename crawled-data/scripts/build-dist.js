@@ -1,7 +1,7 @@
 // Gom thư mục phát hành: chép vào USB hay gửi cho đồng nghiệp là chạy được ngay.
 //
 //   otc-viewer.html               — toàn bộ ứng dụng, nháy đúp là chạy
-//   du-lieu-tra-cuu-duoc.json     — file trống để dùng chung dữ liệu giữa các trình duyệt
+//   du-lieu-tra-cuu-duoc.json     — file trống, để dùng chung phần tự sửa giữa các trình duyệt
 //   HUONG-DAN.txt                 — cho người dùng cuối, không phải cho người lập trình
 //
 // Chỉ hai file. otc-viewer.html đã tự chứa mọi thứ — dữ liệu tra cứu, thư viện Excel,
@@ -34,24 +34,14 @@ fs.copyFileSync(src(HTML), dst(HTML));
 // File dữ liệu dùng chung, tạo sẵn để người dùng khỏi phải tự tạo: chỉ việc bấm nút rồi
 // trỏ vào nó.
 //
-// Có du-lieu-nap-san.json ở thư mục dự án thì dùng luôn (Danh mục đã nhập sẵn, dựng ra
-// bằng seed-datafile.js từ file Excel đã xuất). Không có thì tạo file trống.
+// File này TRỐNG, và như vậy là đúng: Danh mục nạp sẵn nằm trong otc-viewer.html rồi
+// (xem userseed.json + build-viewer.js), mở file html là thấy ngay. File dùng chung chỉ
+// còn lo phần người dùng tự sửa về sau.
 //
-// File trống mang `savedAt: 0` — dấu "chưa ai ghi gì". Nhờ nó mà máy đã có sẵn Danh mục
-// khi nối vào sẽ ĐẨY dữ liệu lên file chứ không bị ghi đè mất. File nạp sẵn thì ngược
-// lại, phải mang mốc thời gian THẬT, để máy trắng nối vào sẽ nhận dữ liệu về.
-const NAP_SAN = src('du-lieu-nap-san.json');
-if (fs.existsSync(NAP_SAN)) {
-  const o = JSON.parse(fs.readFileSync(NAP_SAN, 'utf8'));
-  if (!(+o.savedAt)) throw new Error('du-lieu-nap-san.json thiếu mốc savedAt thật — '
-    + 'máy trắng nối vào sẽ không nhận được dữ liệu');
-  fs.copyFileSync(NAP_SAN, dst('du-lieu-tra-cuu-duoc.json'));
-  console.log(`  (nạp sẵn ${(o.drugs || []).length} thuốc · ${(o.circulars || []).length} thông tư`
-    + ` · ${(o.inters || []).length} tương tác)`);
-} else {
-  fs.writeFileSync(dst('du-lieu-tra-cuu-duoc.json'), JSON.stringify(
-    { drugs: [], circulars: [], inters: [], seeded: [], codes: {}, savedAt: 0 }, null, 1));
-}
+// `savedAt: 0` là dấu "chưa ai ghi gì". Nhờ nó mà máy đã nhập sẵn Danh mục khi nối vào
+// sẽ ĐẨY dữ liệu lên file, chứ không bị file rỗng ghi đè mất.
+fs.writeFileSync(dst('du-lieu-tra-cuu-duoc.json'), JSON.stringify(
+  { drugs: [], circulars: [], inters: [], seeded: [], codes: {}, savedAt: 0 }, null, 1));
 
 const GUIDE = `TRA CỨU DƯỢC — HƯỚNG DẪN SỬ DỤNG
 ===================================================================
@@ -69,18 +59,21 @@ DỮ LIỆU NẰM Ở ĐÂU
 
   Có HAI loại, nằm hai chỗ khác nhau:
 
-  1. DỮ LIỆU TRA CỨU — nằm NGAY TRONG file otc-viewer.html
-     Mã ICD-10, YHCT, PL3, danh mục bệnh OTC, ngân hàng câu hỏi.
-     Đó là lý do file nặng gần 14 MB. Chép file đi đâu, phần này đi
-     theo đó. Máy mới, trình duyệt mới vẫn đầy đủ.
+  1. DỮ LIỆU CÓ SẴN — nằm NGAY TRONG file otc-viewer.html
+     Danh mục thuốc, mã ICD-10, YHCT, PL3, danh mục bệnh OTC, ngân
+     hàng câu hỏi. Đó là lý do file nặng khoảng 15 MB.
 
-  2. PHẦN BẠN TỰ NHẬP — mặc định KHÔNG nằm trong file
-     Danh mục thuốc, Thông tư, Tương tác, các mã bạn sửa hoặc thêm.
+     => MỞ FILE LÊN LÀ CÓ NGAY, không phải nhập gì, không phải nối
+        file nào trước. Chép file đi đâu, phần này đi theo đó.
+
+  2. PHẦN BẠN TỰ SỬA VỀ SAU — KHÔNG nằm trong file
+     Thuốc bạn thêm, dòng bạn sửa hoặc xoá, Thông tư, Tương tác.
      Trình duyệt giữ riêng trên máy đó, bên ngoài file.
 
-  Mỗi trình duyệt giữ một kho riêng, không nhìn thấy nhau. Nhập bằng
-  Chrome thì mở bằng Edge sẽ không thấy. Đây là cách trình duyệt hoạt
-  động, không phải lỗi.
+  Mỗi trình duyệt giữ một kho riêng, không nhìn thấy nhau. Thuốc bạn
+  TỰ THÊM bằng Chrome thì mở bằng Edge sẽ không thấy. Đây là cách
+  trình duyệt hoạt động, không phải lỗi.
+  (Phần có sẵn thì trình duyệt nào cũng thấy đủ.)
 
   => Muốn các trình duyệt thấy chung, xem mục ngay dưới đây.
 
@@ -91,7 +84,9 @@ DÙNG CHUNG DỮ LIỆU GIỮA CÁC TRÌNH DUYỆT / CÁC MÁY
 
        du-lieu-tra-cuu-duoc.json
 
-  File này ĐÃ CÓ SẴN Danh mục thuốc. Nối vào là thấy ngay, khỏi nhập lại.
+  File này để trống, và như vậy là đúng: Danh mục đã nằm sẵn trong
+  otc-viewer.html rồi. File này chỉ dùng để các trình duyệt / các máy
+  thấy chung PHẦN BẠN TỰ SỬA.
 
   Cách dùng, làm y như nhau ở MỌI trình duyệt và MỌI máy:
 
@@ -100,14 +95,14 @@ DÙNG CHUNG DỮ LIỆU GIỮA CÁC TRÌNH DUYỆT / CÁC MÁY
      3. Trỏ vào du-lieu-tra-cuu-duoc.json nằm cạnh file otc-viewer.html
 
   Xong. Từ đó mọi thay đổi tự ghi vào file, và trình duyệt nào trỏ vào
-  đúng file đó cũng thấy chung một Danh mục.
+  đúng file đó cũng thấy chung những thay đổi ấy.
 
   Làm một lần cho mỗi trình duyệt. Chrome làm một lần, Edge làm một lần.
 
   Muốn dùng chung giữa NHIỀU MÁY thì để cả thư mục này trong OneDrive
   hoặc Google Drive, rồi mỗi máy trỏ vào file trong đó.
 
-  Yên tâm: nếu bạn đã lỡ nhập Danh mục trước khi nối file, dữ liệu KHÔNG
+  Yên tâm: nếu bạn đã nhập thêm thuốc trước khi nối file, dữ liệu KHÔNG
   mất. File trống sẽ nhận dữ liệu từ máy bạn chứ không xoá đi.
 
   Khi nút hiện màu VÀNG "Bấm để nối lại file dữ liệu":

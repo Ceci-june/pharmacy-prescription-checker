@@ -17,7 +17,11 @@ const out = {};
     r.continue();
   });
   await page.goto(FILE);
+  // Bản build nay đã kèm sẵn Danh mục, nên "mới tinh" không còn là rỗng. Muốn kiểm phần
+  // thêm/sửa/xoá từ con số 0 thì phải XOÁ SẠCH CÓ CHỦ Ý — đúng thao tác người dùng làm.
   await page.evaluate(() => localStorage.removeItem('gdd.userdata.v1'));
+  await page.reload();
+  await page.evaluate(() => { UD.drugs = []; UD.circulars = []; UD.inters = []; udSave(); });
   await page.reload();
 
   // ── tab Danh mục ──

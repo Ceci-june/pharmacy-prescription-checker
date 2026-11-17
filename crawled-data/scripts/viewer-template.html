@@ -367,9 +367,17 @@ if (!DB) {
   throw new Error('viewer-template.html chưa được build');
 }
 const {diseases:DIS, pharm:PHARM, drugSafety:SAFE, inters:INTERS, symFilter:SF, meta:META, quiz:QUIZ,
-       icd10:ICD, yhct:YHCT, pl3:PL3} = DB;
+       icd10:ICD, yhct:YHCT, pl3:PL3, userSeed:USER_SEED} = DB;
 // Dữ liệu gốc của từng bộ mã, dùng cho cả lần nạp đầu lẫn nút “Khôi phục mã gốc”.
 const CODE_SEED = {icd:ICD || [], yhct:YHCT || [], pl3:PL3 || []};
+// Danh mục / Thông tư / Tương tác cũng nhúng thẳng vào bản build, y như các bộ mã.
+// Nhờ vậy MỞ FILE HTML LÀ THẤY NGAY — không phải nối file dùng chung, không phải nhập
+// lại. File dùng chung từ đây chỉ còn lo phần người dùng tự sửa.
+const _US = USER_SEED || {};
+const USER_KEYS = ['drugs', 'circulars', 'inters'];
+const SEEDS = {icd:CODE_SEED.icd, yhct:CODE_SEED.yhct, pl3:CODE_SEED.pl3,
+               drugs:_US.drugs || [], circulars:_US.circulars || [], inters:_US.inters || []};
+const ALL_KEYS = ['icd', 'yhct', 'pl3'].concat(USER_KEYS);
 
 // 11 nhóm bệnh nhân, nhãn lấy từ getGroups() của app gốc.
 const GROUPS = [
@@ -416,15 +424,16 @@ let UD = {drugs:[], circulars:[], inters:[], codes:{}, seeded:[]}, lsOK = true;
 // dòng gốc đã xoá. Mở lại thì dựng lại từ dữ liệu nhúng rồi áp phần khác đó lên.
 // Muốn so được với bản gốc thì id của dòng gốc phải CỐ ĐỊNH, không random như trước.
 const seedId = (key, i) => key + '#' + i;
-function seedCodes(key) {
-  return (CODE_SEED[key] || []).map((r, i) => ({ ...r, id:seedId(key, i) }));
+function seedRows(key) {
+  return (SEEDS[key] || []).map((r, i) => ({ ...r, id:seedId(key, i) }));
 }
+const seedCodes = seedRows;   // tên cũ, giữ cho quen tay
 // So theo từng trường, không so chuỗi JSON: thứ tự khoá khác nhau vẫn phải coi là giống.
 const sameRow = (a, b) => Object.keys(Object.assign({}, a, b))
   .every(k => String(a[k] == null ? '' : a[k]) === String(b[k] == null ? '' : b[k]));
 
-function codesDiff(key, list) {
-  const base = new Map(seedCodes(key).map(r => [r.id, r]));
+function listDiff(key, list) {
+  const base = new Map(seedRows(key).map(r => [r.id, r]));
   const add = [], edit = {}, alive = new Set();
   for (const r of list) {
     const b = base.get(r.id);
@@ -435,10 +444,10 @@ function codesDiff(key, list) {
   const del = [...base.keys()].filter(id => !alive.has(id));
   return { add, edit, del };
 }
-function codesFromDiff(key, d) {
+function listFromDiff(key, d) {
   const del = new Set(d.del || []), edit = d.edit || {};
   const out = [];
-  for (const r of seedCodes(key)) { if (!del.has(r.id)) out.push(edit[r.id] || r); }
+  for (const r of seedRows(key)) { if (!del.has(r.id)) out.push(edit[r.id] || r); }
   return out.concat(d.add || []);
 }
 
@@ -448,12 +457,20 @@ function codesFromDiff(key, d) {
 // xoá, nên phải thêm vào, nếu không bản cũ sẽ mãi kẹt ở 336 mã ICD.
 // Đổi lại: mã nào người dùng từng chủ ý xoá sẽ quay lại một lần sau khi cập nhật. Chấp nhận,
 // vì giấu mất hơn 15.000 mã mới thì tệ hơn nhiều, và xoá lại thì chỉ một thao tác.
-function migrateCodes(key, arr) {
-  const seed = seedCodes(key);
-  const byContent = new Map(seed.map(r => [r.code + '\u0000' + r.dx, r]));
+const _kh = v => String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' ');
+// Chìa để nhận ra "vẫn là dòng đó": mã bệnh thì theo mã + tên, thuốc và thông tư theo
+// tên, tương tác theo cặp hoạt chất.
+function rowKey(key, r) {
+  if (key === 'drugs' || key === 'circulars') return _kh(r.name);
+  if (key === 'inters') return _kh(r.a) + '\u0000' + _kh(r.b);
+  return _kh(r.code) + '\u0000' + _kh(r.dx);
+}
+function migrateRows(key, arr) {
+  const seed = seedRows(key);
+  const byContent = new Map(seed.map(r => [rowKey(key, r), r]));
   const used = new Set();
   const out = (arr || []).map(r => {
-    const m = byContent.get(r.code + '\u0000' + r.dx);
+    const m = byContent.get(rowKey(key, r));
     if (m && !used.has(m.id)) { used.add(m.id); return Object.assign({}, m, r, { id:m.id }); }
     return r;
   });
@@ -463,7 +480,11 @@ function migrateCodes(key, arr) {
 // Dựng UD từ một gói dữ liệu đã lưu (lấy từ localStorage hay từ file dùng chung đều được).
 function udFrom(o, coGoi) {
   if (coGoi) {
-    UD.drugs = o.drugs || []; UD.circulars = o.circulars || []; UD.inters = o.inters || [];
+    for (const k of USER_KEYS) {
+      const v = o[k];
+      // Mảng = bản lưu cũ (nguyên danh sách). Object = định dạng phần khác.
+      UD[k] = Array.isArray(v) ? migrateRows(k, v) : (v ? listFromDiff(k, v) : []);
+    }
     const stored = o.codes || {};
     // Bản cũ lưu ICD ở UD.icd — chuyển sang UD.codes.icd, giữ nguyên mọi sửa đổi.
     if (!stored.icd && o.icd) stored.icd = o.icd;
@@ -471,10 +492,11 @@ function udFrom(o, coGoi) {
     for (const k in stored) {
       // Mảng = định dạng cũ (lưu nguyên danh sách). Object = định dạng phần khác.
       UD.codes[k] = Array.isArray(stored[k])
-        ? migrateCodes(k, stored[k]) : codesFromDiff(k, stored[k] || {});
+        ? migrateRows(k, stored[k]) : listFromDiff(k, stored[k] || {});
     }
   } else {
-    UD.drugs = []; UD.circulars = []; UD.inters = []; UD.codes = {};
+    for (const k of USER_KEYS) UD[k] = [];
+    UD.codes = {};
   }
   // `seeded` ghi lại những bộ ĐÃ từng được nạp sẵn. Nhờ nó phân biệt được hai cảnh
   // khác hẳn nhau mà cùng cho mảng rỗng: người dùng cố tình xoá sạch một bộ (phải
@@ -482,9 +504,15 @@ function udFrom(o, coGoi) {
   UD.seeded = Array.isArray(o.seeded) ? o.seeded.slice() : (o.codes ? ['icd'] : []);
   for (const c of CODE_SETS) {
     if (UD.codes[c.key] && (UD.codes[c.key].length || UD.seeded.includes(c.key))) continue;
-    UD.codes[c.key] = seedCodes(c.key);
-    if (!UD.seeded.includes(c.key)) UD.seeded.push(c.key);
+    UD.codes[c.key] = seedRows(c.key);
   }
+  for (const k of USER_KEYS) {
+    if ((UD[k] || []).length || UD.seeded.includes(k)) continue;
+    UD[k] = seedRows(k);
+  }
+  // Xong vòng này thì bộ nào cũng đã nạp sẵn đúng một lần. Ghi lại hết, để lần sau người
+  // dùng xoá sạch một bộ thì đó là Ý ĐỊNH của họ, không phải "bản cũ chưa có dữ liệu".
+  for (const k of ALL_KEYS) if (!UD.seeded.includes(k)) UD.seeded.push(k);
 }
 
 function udLoad() {
@@ -504,9 +532,9 @@ function udLoad() {
 }
 // Gói dữ liệu để lưu. `savedAt` dùng để so bên nào mới hơn khi đồng bộ với file chung.
 function udPayload() {
-  const p = { drugs:UD.drugs, circulars:UD.circulars, inters:UD.inters,
-              seeded:UD.seeded, codes:{}, savedAt:Date.now() };
-  for (const k in UD.codes) p.codes[k] = codesDiff(k, UD.codes[k] || []);
+  const p = { seeded:UD.seeded, codes:{}, savedAt:Date.now() };
+  for (const k of USER_KEYS) p[k] = listDiff(k, UD[k] || []);
+  for (const k in UD.codes) p.codes[k] = listDiff(k, UD.codes[k] || []);
   return p;
 }
 function udSave() {
@@ -570,6 +598,12 @@ function fsWrite(payload) {
   fsTimer = setTimeout(fsFlush, 400);
 }
 
+// Một bộ coi như "có gì đó" khi người dùng đã thêm, sửa hoặc xoá dòng nào đó.
+const _coGi = v => Array.isArray(v) ? v.length > 0
+  : !!v && !!((v.add || []).length || Object.keys(v.edit || {}).length || (v.del || []).length);
+const goiRong = p => !p || (!USER_KEYS.some(k => _coGi(p[k]))
+  && !Object.keys(p.codes || {}).some(k => _coGi(p.codes[k])));
+
 // Nối xong thì quyết bên nào thắng: bên nào lưu SAU thì bên đó đúng.
 async function fsSync() {
   try {
@@ -581,8 +615,14 @@ async function fsSync() {
     // Phải coi như rỗng và ĐẨY dữ liệu máy này lên, chứ lấy nó về là xoá sạch Danh mục
     // của người đã nhập sẵn. Người dùng cố ý xoá hết thì savedAt vẫn là mốc thật, nên
     // trường hợp đó vẫn đồng bộ bình thường.
+    // So mốc thời gian thôi thì CHƯA ĐỦ. Trình duyệt chỉ cần mở app một lần là đã có
+    // bản lưu mang mốc "bây giờ" — mới hơn file, dù trong đó chẳng có gì. Cứ theo mốc
+    // thì máy trắng thắng, người dùng không thấy Danh mục mà file còn bị ghi rỗng đè lên.
+    // Nên: máy này KHÔNG CÓ GÌ thì luôn lấy về, chẳng có gì để mất.
     const chuaAiGhi = !remote || !(+remote.savedAt);
-    if (!chuaAiGhi && (+remote.savedAt || 0) >= (+(local && local.savedAt) || 0)) {
+    const mayNayRong = goiRong(local);
+    if (!chuaAiGhi && (mayNayRong
+        || (+remote.savedAt || 0) >= (+(local && local.savedAt) || 0))) {
       udFrom(remote, true);
       try { localStorage.setItem(LSKEY, JSON.stringify(remote)); lsOK = true; } catch (e) { lsOK = false; }
     } else {
